@@ -43,11 +43,10 @@ function ActivityForm({ initial = {}, onSubmit, onCancel, loading }) {
               key={icon}
               type="button"
               onClick={() => set("icon", icon)}
-              className={`w-10 h-10 text-xl rounded-xl border transition-colors ${
-                form.icon === icon
-                  ? "border-brand-red bg-brand-red/10"
-                  : "border-brand-border hover:border-brand-muted bg-brand-surface"
-              }`}
+              className={`w-10 h-10 text-xl rounded-xl border transition-colors ${form.icon === icon
+                ? "border-brand-red bg-brand-red/10"
+                : "border-brand-border hover:border-brand-muted bg-brand-surface"
+                }`}
             >
               {icon}
             </button>
@@ -120,7 +119,18 @@ function ActivityCard({ activity, onEdit, onDelete }) {
 }
 
 export default function Activities() {
-  const { activities, addActivity, updateActivity, deleteActivity } = useApp();
+  const {
+    activities,
+    programs,
+    addActivity,
+    updateActivity,
+    deleteActivity,
+    addProgram,
+    updateProgram,
+    deleteProgram,
+    addProgramPackage,
+    deleteProgramPackage,
+  } = useApp();
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -129,11 +139,9 @@ export default function Activities() {
     setLoading(true);
     await new Promise((r) => setTimeout(r, 400));
     if (selected) {
-      updateActivity(selected.id, data);
-      toast.success("Activity updated!");
+      updateProgram(selected.id, data);
     } else {
-      addActivity(data);
-      toast.success("Activity added!");
+      addProgram(data);
     }
     setLoading(false);
     setModalOpen(false);
@@ -155,17 +163,17 @@ export default function Activities() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="section-title">Activities</h1>
-          <p className="text-sm text-brand-subtle mt-0.5">{activities.length} programs & packages</p>
+          <p className="text-sm text-brand-subtle mt-0.5">{programs.length} programs & packages</p>
         </div>
         <Button onClick={() => { setSelected(null); setModalOpen(true); }}>
-          <Plus size={15} /> Add Activity
+          <Plus size={15} /> Add Program
         </Button>
       </div>
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Total Programs", value: activities.length },
+          { label: "Total Programs", value: programs.length },
           { label: "Avg Gym Fee", value: formatCurrency(activities.reduce((a, c) => a + c.gymFee, 0) / (activities.length || 1)) },
           { label: "With Trainer", value: activities.filter((a) => a.trainerFee > 0).length },
           { label: "Highest Fee", value: formatCurrency(Math.max(...activities.map((a) => a.gymFee + a.trainerFee), 0)) },
@@ -177,7 +185,7 @@ export default function Activities() {
         ))}
       </div>
 
-      {activities.length === 0 ? (
+      {programs.length === 0 ? (
         <div className="card">
           <EmptyState
             icon={Dumbbell}
@@ -192,8 +200,27 @@ export default function Activities() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {activities.map((activity) => (
-            <ActivityCard key={activity.id} activity={activity} onEdit={openEdit} onDelete={handleDelete} />
+          {programs.map((program) => (
+            <div key={program.id} className="card p-5">
+              <h3 className="font-display font-bold text-brand-text">
+                {program.name}
+              </h3>
+
+              <p className="text-xs text-brand-subtle mb-3">
+                {program.description}
+              </p>
+
+              <div className="space-y-2">
+                {program.packages?.map((pkg) => (
+                  <div key={pkg.id} className="p-3 bg-brand-surface rounded-xl border border-brand-border">
+                    <p className="font-medium text-brand-text">{pkg.name}</p>
+                    <p className="text-xs text-brand-subtle">
+                      Gym Fee: ₹{pkg.gym_fee} | Trainer Fee: ₹{pkg.trainer_fee}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -201,7 +228,7 @@ export default function Activities() {
       <Modal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); setSelected(null); }}
-        title={selected ? "Edit Activity" : "Add Activity"}
+        title={selected ? "Edit Program" : "Add Program"}
         size="md"
       >
         <ActivityForm
