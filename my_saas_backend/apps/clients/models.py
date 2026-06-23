@@ -1,5 +1,6 @@
 from django.db import models
 from apps.accounts.models import Gym
+import datetime
 
 
 class Package(models.Model):
@@ -12,7 +13,6 @@ class Package(models.Model):
 
     class Meta:
         db_table = 'packages'
-        app_label = 'clients'
 
     def __str__(self):
         return f"{self.name} - {self.gym.name}"
@@ -31,11 +31,18 @@ class Client(models.Model):
     phone = models.CharField(max_length=15)
     email = models.EmailField(blank=True, null=True)
     address = models.TextField(blank=True)
-    join_date = models.DateField()
-    expiry_date = models.DateField()
-    package = models.ForeignKey(Package, on_delete=models.SET_NULL, null=True, blank=True, related_name='clients')
+    join_date = models.DateField(default=datetime.date.today)
+    expiry_date = models.DateField(default=datetime.date.today)
+    package = models.ForeignKey(
+        Package, on_delete=models.SET_NULL, null=True, blank=True, related_name='clients'
+    )
+    program_package = models.ForeignKey(
+        'activities.ProgramPackage', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='clients'
+    )
     trainer = models.ForeignKey(
-        'trainers.Trainer', on_delete=models.SET_NULL, null=True, blank=True, related_name='clients'
+        'trainers.Trainer', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='clients'
     )
     personal_training = models.BooleanField(default=False)
     photo = models.ImageField(upload_to='client_photos/', null=True, blank=True)
@@ -45,15 +52,13 @@ class Client(models.Model):
 
     class Meta:
         db_table = 'clients'
-        app_label = 'clients'
         ordering = ['-created_at']
 
     def __str__(self):
         return f"{self.name} - {self.gym.name}"
 
     def update_status(self):
-        from datetime import date
-        today = date.today()
+        today = datetime.date.today()
         delta = (self.expiry_date - today).days
         if delta < 0:
             self.status = 'expired'
@@ -82,7 +87,6 @@ class Payment(models.Model):
 
     class Meta:
         db_table = 'payments'
-        app_label = 'clients'
         ordering = ['-date']
 
     def __str__(self):

@@ -166,7 +166,7 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.AllowAny',
+         'rest_framework.permissions.IsAuthenticated',
     ),
 }
 
@@ -184,13 +184,4 @@ SIMPLE_JWT = {
 
 
 
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '192.168.1.12',
-    '192.168.1.11',  # ← Replace with YOUR actual IP address
-    'fitnesshub.localhost',
-    'powergym.localhost',
-    'elitefitness.localhost',
-    '*',  # Optional: allows all hosts (for testing only)
-]
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
