@@ -25,7 +25,6 @@ class Client(models.Model):
         ('expired', 'Expired'),
         ('inactive', 'Inactive'),
     )
-
     PAYMENT_METHOD_CHOICES = (
         ('cash', 'Cash'),
         ('upi', 'UPI'),
@@ -50,11 +49,7 @@ class Client(models.Model):
         null=True, blank=True, related_name='clients'
     )
     personal_training = models.BooleanField(default=False)
-    payment_method = models.CharField(
-        max_length=10,
-        choices=PAYMENT_METHOD_CHOICES,
-        default='cash'
-    )
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_METHOD_CHOICES, default='cash')
     photo = models.ImageField(upload_to='client_photos/', null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -77,6 +72,46 @@ class Client(models.Model):
         else:
             self.status = 'active'
         self.save(update_fields=['status'])
+
+
+class MembershipHistory(models.Model):
+    """
+    Immutable audit log of every enrollment, renewal, or package upgrade.
+    Client table always holds the *current* active membership.
+    """
+    ACTION_CHOICES = (
+        ('new', 'New Enrollment'),
+        ('renewal', 'Renewal'),
+        ('upgrade', 'Package Upgrade'),
+    )
+    PAYMENT_METHOD_CHOICES = (
+        ('cash', 'Cash'),
+        ('upi', 'UPI'),
+    )
+
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='membership_history')
+    gym = models.ForeignKey(Gym, on_delete=models.CASCADE, related_name='membership_history')
+    program_package = models.ForeignKey(
+        'activities.ProgramPackage', on_delete=models.SET_NULL, null=True, blank=True
+    )
+    trainer = models.ForeignKey(
+        'trainers.Trainer', on_delete=models.SET_NULL, null=True, blank=True
+    )
+    personal_training = models.BooleanField(default=False)
+    join_date = models.DateField()
+    expiry_date = models.DateField()
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_METHOD_CHOICES, default='cash')
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='new')
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'membership_history'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.client.name} — {self.get_action_display()} on {self.created_at.date()}"
 
 
 class Payment(models.Model):

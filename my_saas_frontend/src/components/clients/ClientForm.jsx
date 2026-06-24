@@ -1,7 +1,7 @@
 // src/components/clients/ClientForm.jsx
 
 import { useState, useEffect } from "react";
-import { Input, Select, Toggle } from "../ui/Input";
+import { Input, Select } from "../ui/Input";
 import Button from "../ui/Button";
 import { useApp } from "../../hooks/useApp";
 
@@ -12,62 +12,63 @@ const defaultForm = {
   address: "",
   joinDate: new Date().toISOString().split("T")[0],
   expiryDate: "",
-  // programPackageId replaces the old packageId — only program_package is used now
-  programPackageId: "",
   trainerId: "",
-  personalTraining: false,
-  photo: null,
+  paymentMethod: "cash",
+  amountPaid: "",
+  note: "",
 };
 
 /**
- * ClientForm
+ * ClientForm — used for Add, Edit, Renew, and Upgrade actions.
  *
  * Props:
- *   initial      – existing client data for edit / renew mode
+ *   initial      – existing client data for edit / renew / upgrade mode
  *   onSubmit     – called with the form payload
  *   onCancel     – called on cancel
  *   loading      – shows spinner on submit button
- *   isRenewal    – when true, shows "Renew Membership" UI instead of "Save Changes"
+ *   mode         – 'add' | 'edit' | 'renew' | 'upgrade'
  */
 export default function ClientForm({
   initial = {},
   onSubmit,
   onCancel,
   loading,
-  isRenewal = false,
+  mode = "add",
 }) {
   const { trainers, programs } = useApp();
 
-  // ── Derive which program owns the pre-selected package (edit / renew mode) ──
-  const initialProgramId = (() => {
-    if (!initial.programPackageId) return "";
-    const prog = programs.find((p) =>
-      p.packages?.some((pk) => pk.id === Number(initial.programPackageId))
-    );
-    return prog ? String(prog.id) : "";
-  })();
+  // For checkbox multi-program selection: track selected program packages per program
+  // selectedPrograms = { [programId]: packageId | null }
+  const initSelectedPrograms = () => {
+    const map = {};
+    if (initial.program_package || initial.programPackageId) {
+      const pkgId = Number(initial.program_package || initial.programPackageId);
+      for (const prog of programs) {
+        if (prog.packages?.some((pk) => pk.id === pkgId)) {
+          map[prog.id] = pkgId;
+          break;
+        }
+      }
+    }
+    return map;
+  };
 
   const [form, setForm] = useState({
     ...defaultForm,
     ...initial,
-    // Normalize snake_case fields that come back from the backend
     joinDate: initial.join_date ?? initial.joinDate ?? defaultForm.joinDate,
     expiryDate: initial.expiry_date ?? initial.expiryDate ?? "",
-    programPackageId: initial.program_package
-      ? String(initial.program_package)
-      : initial.programPackageId
-        ? String(initial.programPackageId)
-        : "",
     trainerId: initial.trainer
       ? String(initial.trainer)
       : initial.trainerId
         ? String(initial.trainerId)
         : "",
-    personalTraining:
-      initial.personal_training ?? initial.personalTraining ?? false,
+    paymentMethod: initial.payment_method ?? initial.paymentMethod ?? "cash",
+    amountPaid: "",
+    note: "",
   });
 
-  const [selectedProgramId, setSelectedProgramId] = useState(initialProgramId);
+  const [selectedPrograms, setSelectedPrograms] = useState(initSelectedPrograms);
   const [errors, setErrors] = useState({});
 
   const set = (key, val) => {
@@ -75,22 +76,23 @@ export default function ClientForm({
     if (errors[key]) setErrors((p) => ({ ...p, [key]: "" }));
   };
 
-  // ── When trainer changes, remove PT program selection if trainer can't offer PT ──
+  // When trainer changes, deselect PT programs if trainer can't offer PT
   useEffect(() => {
     if (!form.trainerId) return;
     const trainer = trainers.find((t) => t.id === Number(form.trainerId));
     if (!trainer?.offers_personal_training) {
-      // Deselect if currently selected program is a PT program
-      const currentProg = programs.find((p) => p.id === Number(selectedProgramId));
-      if (currentProg?.program_type === "personal_training") {
-        setSelectedProgramId("");
-        set("programPackageId", "");
-        if (form.personalTraining) set("personalTraining", false);
-      }
+      setSelectedPrograms((prev) => {
+        const next = { ...prev };
+        for (const prog of programs) {
+          if (prog.program_type === "personal_training" && next[prog.id]) {
+            delete next[prog.id];
+          }
+        }
+        return next;
+      });
     }
   }, [form.trainerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Filter programs: hide PT programs unless the selected trainer offers PT ──
   const selectedTrainer = trainers.find((t) => t.id === Number(form.trainerId));
   const trainerOffersPT = selectedTrainer?.offers_personal_training === true;
 
@@ -100,14 +102,38 @@ export default function ClientForm({
     return true;
   });
 
-  // ── Packages under the currently selected program ──────────────────────────
-  const programPackages = selectedProgramId
-    ? programs.find((p) => p.id === Number(selectedProgramId))?.packages?.filter(
-      (pk) => pk.is_active
-    ) ?? []
-    : [];
+  // Toggle program checkbox
+  const toggleProgram = (prog) => {
+    setSelectedPrograms((prev) => {
+      const next = { ...prev };
+      if (next[prog.id] !== undefined) {
+        delete next[prog.id]; // uncheck
+      } else {
+        // check — pre-select first active package
+        const firstPkg = prog.packages?.find((pk) => pk.is_active);
+        next[prog.id] = firstPkg?.id ?? null;
+      }
+      return next;
+    });
+  };
 
-  // ── Validation ─────────────────────────────────────────────────────────────
+  // Get the primary (first PT or first checked) programPackageId for the payload
+  const getPrimaryPackageId = () => {
+    // PT program takes priority
+    for (const prog of programs) {
+      if (prog.program_type === "personal_training" && selectedPrograms[prog.id]) {
+        return selectedPrograms[prog.id];
+      }
+    }
+    // Otherwise first selected
+    const ids = Object.values(selectedPrograms).filter(Boolean);
+    return ids[0] ?? null;
+  };
+
+  const hasPTSelected = programs.some(
+    (p) => p.program_type === "personal_training" && selectedPrograms[p.id]
+  );
+
   const validate = () => {
     const e = {};
     if (!form.name.trim()) e.name = "Name is required";
@@ -121,86 +147,104 @@ export default function ClientForm({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!validate()) return;
+
+    const primaryPkgId = getPrimaryPackageId();
+
     onSubmit({
       ...form,
-      programPackageId: form.programPackageId ? Number(form.programPackageId) : null,
+      programPackageId: primaryPkgId,
+      selectedPrograms, // pass all selected programs for UI display if needed
       trainerId: form.trainerId ? Number(form.trainerId) : null,
+      personalTraining: hasPTSelected,
     });
   };
 
-  // ── Renewal label ──────────────────────────────────────────────────────────
-  const submitLabel = isRenewal
-    ? "Renew Membership"
-    : initial.id
-      ? "Save Changes"
-      : "Add Client";
+  const isRenew = mode === "renew";
+  const isUpgrade = mode === "upgrade";
+  const isEdit = mode === "edit";
+
+  const submitLabel =
+    isRenew ? "Renew Membership" :
+      isUpgrade ? "Confirm Upgrade" :
+        isEdit ? "Save Changes" :
+          "Add Client";
+
+  const bannerConfig = isRenew
+    ? { bg: "bg-amber-500/10 border-amber-500/30", text: "text-amber-400", emoji: "♻️", label: "Renewing membership for" }
+    : isUpgrade
+      ? { bg: "bg-blue-500/10 border-blue-500/30", text: "text-blue-400", emoji: "⬆️", label: "Upgrading package for" }
+      : null;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Renewal banner */}
-      {isRenewal && (
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm font-medium">
-          ♻️ Renewing membership for <span className="font-bold">{initial.name}</span>
+      {/* Mode banner */}
+      {bannerConfig && (
+        <div className={`flex items-center gap-2 px-4 py-2.5 ${bannerConfig.bg} border rounded-xl ${bannerConfig.text} text-sm font-medium`}>
+          {bannerConfig.emoji} {bannerConfig.label} <span className="font-bold">{initial.name}</span>
           {initial.expiryDate && (
-            <span className="text-xs text-amber-300 ml-auto">
-              Previous expiry: {initial.expiryDate}
+            <span className="text-xs opacity-75 ml-auto">
+              Current expiry: {initial.expiry_date ?? initial.expiryDate}
             </span>
           )}
         </div>
       )}
 
-      {/* Name & Phone */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input
-          label="Full Name *"
-          placeholder="Enter client name"
-          value={form.name}
-          onChange={(e) => set("name", e.target.value)}
-          error={errors.name}
-        />
-        <Input
-          label="Phone *"
-          placeholder="10-digit number"
-          value={form.phone}
-          onChange={(e) => set("phone", e.target.value)}
-          error={errors.phone}
-        />
-      </div>
+      {/* Name & Phone — hidden on renew/upgrade (client is fixed) */}
+      {!isRenew && !isUpgrade && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Full Name *"
+              placeholder="Enter client name"
+              value={form.name}
+              onChange={(e) => set("name", e.target.value)}
+              error={errors.name}
+            />
+            <Input
+              label="Phone *"
+              placeholder="10-digit number"
+              value={form.phone}
+              onChange={(e) => set("phone", e.target.value)}
+              error={errors.phone}
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Email"
+              placeholder="email@example.com"
+              type="email"
+              value={form.email}
+              onChange={(e) => set("email", e.target.value)}
+            />
+            <Input
+              label="Address"
+              placeholder="City, Area"
+              value={form.address}
+              onChange={(e) => set(e.target.value)}
+            />
+          </div>
+        </>
+      )}
 
-      {/* Email & Address */}
+      {/* Dates */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {!isRenew && !isUpgrade && (
+          <Input
+            label="Join Date *"
+            type="date"
+            value={form.joinDate}
+            onChange={(e) => set("joinDate", e.target.value)}
+            error={errors.joinDate}
+          />
+        )}
         <Input
-          label="Email"
-          placeholder="email@example.com"
-          type="email"
-          value={form.email}
-          onChange={(e) => set("email", e.target.value)}
-        />
-        <Input
-          label="Address"
-          placeholder="City, Area"
-          value={form.address}
-          onChange={(e) => set("address", e.target.value)}
-        />
-      </div>
-
-      {/* Dates — auto-focus expiry on renewal */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input
-          label="Join Date *"
-          type="date"
-          value={form.joinDate}
-          onChange={(e) => set("joinDate", e.target.value)}
-          error={errors.joinDate}
-        />
-        <Input
-          label={isRenewal ? "New Expiry Date *" : "Expiry Date *"}
+          label={isRenew ? "New Expiry Date *" : isUpgrade ? "New Expiry Date *" : "Expiry Date *"}
           type="date"
           value={form.expiryDate}
           onChange={(e) => set("expiryDate", e.target.value)}
           error={errors.expiryDate}
           // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus={isRenewal}
+          autoFocus={isRenew || isUpgrade}
         />
       </div>
 
@@ -216,8 +260,7 @@ export default function ClientForm({
             .filter((t) => t.status === "active")
             .map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name}
-                {t.offers_personal_training ? " 🏋️" : ""}
+                {t.name}{t.offers_personal_training ? " 🏋️" : ""}
               </option>
             ))}
         </Select>
@@ -228,73 +271,108 @@ export default function ClientForm({
         )}
       </div>
 
-      {/* Program selection */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Select
-          label="Program"
-          value={selectedProgramId}
-          onChange={(e) => {
-            setSelectedProgramId(e.target.value);
-            set("programPackageId", ""); // reset package when program changes
-            // Auto-toggle PT flag when PT program selected
-            const prog = programs.find((p) => p.id === Number(e.target.value));
-            if (prog?.program_type === "personal_training") {
-              set("personalTraining", true);
-            }
-          }}
-        >
-          <option value="">No program</option>
-          {visiblePrograms.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.icon ? `${p.icon} ` : ""}
-              {p.name}
-            </option>
-          ))}
-        </Select>
+      {/* Program checkbox selection */}
+      <div>
+        <p className="text-sm font-medium text-brand-text mb-2">Programs</p>
+        {visiblePrograms.length === 0 ? (
+          <p className="text-xs text-brand-subtle">No active programs available.</p>
+        ) : (
+          <div className="space-y-2">
+            {visiblePrograms.map((prog) => {
+              const isChecked = selectedPrograms[prog.id] !== undefined;
+              const isPT = prog.program_type === "personal_training";
+              const activePkgs = prog.packages?.filter((pk) => pk.is_active) ?? [];
 
-        <Select
-          label="Program Package"
-          value={form.programPackageId}
-          onChange={(e) => set("programPackageId", e.target.value)}
-          disabled={!selectedProgramId || programPackages.length === 0}
-        >
-          <option value="">
-            {!selectedProgramId
-              ? "Select a program first"
-              : programPackages.length === 0
-                ? "No packages available"
-                : "Select package"}
-          </option>
-          {programPackages.map((pp) => (
-            <option key={pp.id} value={pp.id}>
-              {pp.name} — {pp.duration_months}mo — ₹{pp.price}
-            </option>
-          ))}
-        </Select>
+              return (
+                <div
+                  key={prog.id}
+                  className={`rounded-xl border transition-colors ${isChecked
+                      ? isPT
+                        ? "bg-purple-500/10 border-purple-500/30"
+                        : "bg-brand-red/5 border-brand-red/30"
+                      : "bg-brand-card border-brand-border"
+                    }`}
+                >
+                  {/* Program checkbox row */}
+                  <label className="flex items-center gap-3 px-4 py-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleProgram(prog)}
+                      className="w-4 h-4 rounded accent-brand-red"
+                    />
+                    <span className="text-lg leading-none">{prog.icon || "🏃"}</span>
+                    <span className="text-sm font-medium text-brand-text flex-1">{prog.name}</span>
+                    {isPT && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                        Personal Training
+                      </span>
+                    )}
+                  </label>
+
+                  {/* Package sub-select — shown only when program is checked */}
+                  {isChecked && activePkgs.length > 0 && (
+                    <div className="px-4 pb-3">
+                      <Select
+                        label="Select Package"
+                        value={selectedPrograms[prog.id] ?? ""}
+                        onChange={(e) =>
+                          setSelectedPrograms((prev) => ({
+                            ...prev,
+                            [prog.id]: e.target.value ? Number(e.target.value) : null,
+                          }))
+                        }
+                      >
+                        <option value="">Choose a package</option>
+                        {activePkgs.map((pk) => (
+                          <option key={pk.id} value={pk.id}>
+                            {pk.name} — {pk.duration_months} month{pk.duration_months > 1 ? "s" : ""} — ₹{pk.price}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {hasPTSelected && (
+          <p className="text-xs text-purple-400 mt-2">
+            🏋️ Personal Training automatically enabled — PT program selected.
+          </p>
+        )}
       </div>
 
-      {/* Personal Training toggle — read-only when PT program is selected */}
-      <div className="py-1">
-        <Toggle
-          label="Personal Training"
-          checked={form.personalTraining}
-          onChange={(v) => set("personalTraining", v)}
-          disabled={
-            (() => {
-              const prog = programs.find((p) => p.id === Number(selectedProgramId));
-              return prog?.program_type === "personal_training";
-            })()
-          }
+      {/* Payment info — shown on renew/upgrade/add */}
+      {(isRenew || isUpgrade || mode === "add") && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            label="Amount Paid (₹)"
+            type="number"
+            placeholder="e.g. 2499"
+            value={form.amountPaid}
+            onChange={(e) => set("amountPaid", e.target.value)}
+          />
+          <Select
+            label="Payment Method"
+            value={form.paymentMethod}
+            onChange={(e) => set("paymentMethod", e.target.value)}
+          >
+            <option value="cash">Cash</option>
+            <option value="upi">UPI</option>
+          </Select>
+        </div>
+      )}
+
+      {(isRenew || isUpgrade) && (
+        <Input
+          label="Note (optional)"
+          placeholder="e.g. Upgraded from 1 month to 3 months"
+          value={form.note}
+          onChange={(e) => set("note", e.target.value)}
         />
-        {(() => {
-          const prog = programs.find((p) => p.id === Number(selectedProgramId));
-          return prog?.program_type === "personal_training" ? (
-            <p className="text-xs text-purple-400 mt-1">
-              Automatically enabled — client is enrolled in a PT program.
-            </p>
-          ) : null;
-        })()}
-      </div>
+      )}
 
       {/* Actions */}
       <div className="flex justify-end gap-3 pt-2 border-t border-brand-border mt-2">

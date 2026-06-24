@@ -8,7 +8,7 @@ import toast from "react-hot-toast";
 
 export default function Navbar({ onMenuClick }) {
   const { stats } = useApp();
-  const { logout, token } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -27,43 +27,23 @@ export default function Navbar({ onMenuClick }) {
     })),
   ];
 
+  // ── FIX: use useAuth logout() directly — no hardcoded IP, refresh token handled inside ──
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
-      // Call logout API
-      const response = await fetch("http://192.168.1.11:8000/api/logout/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-
-      const data = await response.json();
-      console.log("Logout response:", data);
-
-      if (response.ok) {
-        toast.success(data.message || "Logged out successfully!");
-      } else {
-        // Even if API fails, still logout locally
-        console.warn("Logout API error:", data);
-        toast.success("Logged out successfully!");
-      }
-    } catch (error) {
-      console.error("Logout error:", error);
-      // Still logout locally even if API fails
+      await logout(); // clears localStorage + calls API with refresh token
       toast.success("Logged out successfully!");
-    } finally {
-      // Clear local storage and auth state
-      logout();
-      setLoggingOut(false);
       navigate("/login");
+    } catch {
+      // logout() never throws — but handle defensively
+      navigate("/login");
+    } finally {
+      setLoggingOut(false);
     }
   };
 
   return (
     <header className="h-16 bg-brand-surface border-b border-brand-border px-4 lg:px-6 flex items-center gap-4 sticky top-0 z-20">
-      {/* Mobile menu */}
       <button
         onClick={onMenuClick}
         className="lg:hidden p-2 rounded-lg hover:bg-brand-card text-brand-subtle hover:text-brand-text transition-colors"
@@ -71,7 +51,6 @@ export default function Navbar({ onMenuClick }) {
         <Menu size={20} />
       </button>
 
-      {/* Search */}
       <div className="flex-1 max-w-md hidden sm:flex">
         <div className="relative w-full">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-subtle" />
@@ -125,7 +104,6 @@ export default function Navbar({ onMenuClick }) {
           )}
         </div>
 
-        {/* Divider */}
         <div className="w-px h-6 bg-brand-border" />
 
         {/* User Menu */}
@@ -141,13 +119,9 @@ export default function Navbar({ onMenuClick }) {
             </div>
           </button>
 
-          {/* User Dropdown Menu */}
           {showUserMenu && (
             <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowUserMenu(false)}
-              />
+              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
               <div className="absolute right-0 top-12 w-56 bg-brand-surface border border-brand-border rounded-xl shadow-2xl z-50 animate-slide-in overflow-hidden">
                 <div className="px-4 py-3 border-b border-brand-border">
                   <p className="text-sm font-medium text-brand-text">Admin User</p>
@@ -155,24 +129,16 @@ export default function Navbar({ onMenuClick }) {
                 </div>
                 <div className="py-2">
                   <button
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      navigate("/profile");
-                    }}
+                    onClick={() => { setShowUserMenu(false); navigate("/profile"); }}
                     className="w-full px-4 py-2 text-left text-sm text-brand-text hover:bg-brand-card transition-colors flex items-center gap-2"
                   >
-                    <span className="text-base">👤</span>
-                    Profile Settings
+                    <span className="text-base">👤</span> Profile Settings
                   </button>
                   <button
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      navigate("/settings");
-                    }}
+                    onClick={() => { setShowUserMenu(false); navigate("/settings"); }}
                     className="w-full px-4 py-2 text-left text-sm text-brand-text hover:bg-brand-card transition-colors flex items-center gap-2"
                   >
-                    <span className="text-base">⚙️</span>
-                    Settings
+                    <span className="text-base">⚙️</span> Settings
                   </button>
                   <hr className="my-2 border-brand-border" />
                   <button
@@ -187,8 +153,7 @@ export default function Navbar({ onMenuClick }) {
                       </>
                     ) : (
                       <>
-                        <LogOut size={16} />
-                        Logout
+                        <LogOut size={16} /> Logout
                       </>
                     )}
                   </button>

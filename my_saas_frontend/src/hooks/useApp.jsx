@@ -445,6 +445,54 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  // Renew: extend expiry, keep same or new package — writes MembershipHistory action='renewal'/'upgrade'
+  const renewClient = useCallback(async (clientId, formData) => {
+    try {
+      const payload = {
+        expiry_date: formData.expiryDate,
+        program_package: formData.programPackageId || null,
+        trainer: formData.trainerId || null,
+        personal_training: formData.personalTraining ?? false,
+        amount_paid: formData.amountPaid || null,
+        payment_method: formData.paymentMethod || "cash",
+        note: formData.note || "",
+      };
+      const updated = await clientsAPI.renew(clientId, payload);
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? normalizeClient(updated) : c))
+      );
+      toast.success("Membership renewed!");
+      return updated;
+    } catch (err) {
+      toast.error(err.message || "Failed to renew membership");
+      throw err;
+    }
+  }, []);
+
+  // Upgrade: mid-cycle package change — calls same /renew/ endpoint with upgrade action
+  const upgradeClient = useCallback(async (clientId, formData) => {
+    try {
+      const payload = {
+        expiry_date: formData.expiryDate,
+        program_package: formData.programPackageId || null,
+        trainer: formData.trainerId || null,
+        personal_training: formData.personalTraining ?? false,
+        amount_paid: formData.amountPaid || null,
+        payment_method: formData.paymentMethod || "cash",
+        note: formData.note || "Package upgrade",
+      };
+      const updated = await clientsAPI.renew(clientId, payload);
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? normalizeClient(updated) : c))
+      );
+      toast.success("Package upgraded!");
+      return updated;
+    } catch (err) {
+      toast.error(err.message || "Failed to upgrade package");
+      throw err;
+    }
+  }, []);
+
   // ── Trainers ──────────────────────────────────────────────────────────────
   const addTrainer = useCallback(async (formData) => {
     try {
@@ -668,6 +716,8 @@ export function AppProvider({ children }) {
         updateClient,
         deleteClient,
         addPayment,
+        renewClient,
+        upgradeClient,
         // Trainers
         trainers,
         addTrainer,

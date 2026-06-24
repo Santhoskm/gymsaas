@@ -63,6 +63,9 @@ export default function Dashboard() {
   const activeClients = apiStats?.active_clients ?? stats.activeClients;
   const newThisMonth = apiStats?.new_this_month ?? stats.newClientsThisMonth;
   const ptClients = apiStats?.pt_clients ?? stats.ptClients;
+  const renewalsThisMonth = apiStats?.renewals_this_month ?? 0;
+  const newClientRevenue = apiStats?.new_client_revenue ?? 0;
+  const renewalRevenue = apiStats?.renewal_revenue ?? 0;
 
   // Expiring clients come from the API expiring_clients list (richer data)
   // but fall back to the locally computed list if API not loaded yet
@@ -101,7 +104,7 @@ export default function Dashboard() {
           value={formatCurrency(monthlyRevenue)}
           icon={DollarSign}
           iconColor="text-emerald-400"
-          trendLabel="this month"
+          trendLabel={`₹${Math.round(newClientRevenue).toLocaleString('en-IN')} new · ₹${Math.round(renewalRevenue).toLocaleString('en-IN')} renewal`}
           onClick={() => navigate("/expenses")}
         />
         <StatCard
@@ -117,8 +120,16 @@ export default function Dashboard() {
           value={newThisMonth}
           icon={UserPlus}
           iconColor="text-brand-orange"
-          trendLabel="this month"
+          trendLabel="joined this month"
           onClick={() => navigate("/clients")}
+        />
+        <StatCard
+          title="Renewals"
+          value={renewalsThisMonth}
+          icon={Activity}
+          iconColor="text-amber-400"
+          trendLabel="this month"
+          onClick={() => navigate("/clients?filter=active")}
         />
         <StatCard
           title="PT Clients"
@@ -145,7 +156,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="font-display text-lg font-bold text-brand-text">Revenue vs Expenses</h2>
-              <p className="text-xs text-brand-subtle mt-0.5">Last 6 months overview</p>
+              <p className="text-xs text-brand-subtle mt-0.5">Last 6 months — new clients vs renewals</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -154,6 +165,10 @@ export default function Dashboard() {
                 <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#E8001D" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#E8001D" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorRenewal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#FF5500" stopOpacity={0.2} />
@@ -165,18 +180,19 @@ export default function Dashboard() {
               <YAxis tick={{ fill: "#888", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${v / 1000}k`} />
               <Tooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{ fontSize: 12, color: "#888" }} />
-              <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#E8001D" strokeWidth={2} fill="url(#colorRevenue)" />
+              <Area type="monotone" dataKey="new_revenue" name="New Clients" stroke="#E8001D" strokeWidth={2} fill="url(#colorRevenue)" />
+              <Area type="monotone" dataKey="renewal_revenue" name="Renewals" stroke="#f59e0b" strokeWidth={2} fill="url(#colorRenewal)" />
               <Area type="monotone" dataKey="expenses" name="Expenses" stroke="#FF5500" strokeWidth={2} fill="url(#colorExpenses)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Client Growth — real data from dashboardData.client_growth */}
+        {/* Client Growth — new + renewals per month */}
         <div className="card p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="font-display text-lg font-bold text-brand-text">Client Growth</h2>
-              <p className="text-xs text-brand-subtle mt-0.5">New members per month</p>
+              <h2 className="font-display text-lg font-bold text-brand-text">Client Activity</h2>
+              <p className="text-xs text-brand-subtle mt-0.5">New joins & renewals per month</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -187,6 +203,7 @@ export default function Dashboard() {
               <Tooltip content={<ClientTooltip />} />
               <Legend wrapperStyle={{ fontSize: 12, color: "#888" }} />
               <Bar dataKey="new" name="New Clients" fill="#E8001D" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="renewals" name="Renewals" fill="#f59e0b" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

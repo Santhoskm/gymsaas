@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import { UserPlus, Search, Filter, Users, RefreshCw } from "lucide-react";
+import { UserPlus, Search, Filter, Users, RefreshCw, ArrowUpCircle } from "lucide-react";
 import { useApp } from "../hooks/useApp";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
@@ -14,7 +14,11 @@ import ClientDetail from "../components/clients/ClientDetail";
 import { formatDate, getTrainerName } from "../utils";
 
 export default function Clients() {
-  const { clients, trainers, addClient, updateClient, deleteClient } = useApp();
+  const {
+    clients, trainers,
+    addClient, updateClient, deleteClient,
+    renewClient, upgradeClient,
+  } = useApp();
 
   const location = useLocation();
   const [search, setSearch] = useState("");
@@ -23,12 +27,11 @@ export default function Clients() {
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [renewMode, setRenewMode] = useState(false);   // ← NEW
+  // mode: 'add' | 'edit' | 'renew' | 'upgrade'
+  const [formMode, setFormMode] = useState("add");
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Auto-open add modal or apply filter from URL query params
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get("action") === "add") setModalOpen(true);
@@ -36,7 +39,6 @@ export default function Clients() {
     if (f) setFilter(f);
   }, [location.search]);
 
-  // ── Filtered client list ────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return clients.filter((c) => {
       const matchesSearch =
@@ -58,11 +60,8 @@ export default function Clients() {
     try {
       await addClient(data);
       setModalOpen(false);
-    } catch {
-      // error toast shown inside useApp
-    } finally {
-      setLoading(false);
-    }
+      setSelected(null);
+    } catch { /* toast shown in useApp */ } finally { setLoading(false); }
   };
 
   const handleEdit = async (data) => {
@@ -70,32 +69,29 @@ export default function Clients() {
     try {
       await updateClient(selected.id, data);
       setDetailOpen(false);
-      setEditMode(false);
+      setFormMode("add");
       setSelected(null);
-    } catch {
-      // error toast shown inside useApp
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* toast shown in useApp */ } finally { setLoading(false); }
   };
 
-  /**
-   * handleRenew — same as handleEdit but also refreshes dashboard.
-   * The backend will call client.update_status() after saving the new expiry_date,
-   * which automatically flips expired → active.
-   */
   const handleRenew = async (data) => {
     setLoading(true);
     try {
-      await updateClient(selected.id, data);
+      await renewClient(selected.id, data);
       setModalOpen(false);
-      setRenewMode(false);
+      setFormMode("add");
       setSelected(null);
-    } catch {
-      // error toast shown inside useApp
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* toast shown in useApp */ } finally { setLoading(false); }
+  };
+
+  const handleUpgrade = async (data) => {
+    setLoading(true);
+    try {
+      await upgradeClient(selected.id, data);
+      setModalOpen(false);
+      setFormMode("add");
+      setSelected(null);
+    } catch { /* toast shown in useApp */ } finally { setLoading(false); }
   };
 
   const handleDelete = async (id) => {
@@ -106,31 +102,44 @@ export default function Clients() {
 
   const openDetail = (client) => {
     setSelected(client);
-    setEditMode(false);
-    setRenewMode(false);
+    setFormMode("add");
     setDetailOpen(true);
   };
 
-  /**
-   * openRenewModal — opens the Add/Edit modal pre-filled with the client's
-   * existing data. The expiry date is pre-set to +1 month from today so the
-   * staff member only needs to confirm (or change) it.
-   */
   const openRenewModal = (client, e) => {
-    e?.stopPropagation(); // don't also open the detail modal
+    e?.stopPropagation();
     const nextMonth = new Date();
     nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const newExpiry = nextMonth.toISOString().split("T")[0];
+    setSelected({ ...client, expiryDate: nextMonth.toISOString().split("T")[0] });
+    setFormMode("renew");
+    setModalOpen(true);
+  };
 
-    setSelected({ ...client, expiryDate: newExpiry });
-    setRenewMode(true);
+  const openUpgradeModal = (client, e) => {
+    e?.stopPropagation();
+    setSelected({ ...client });
+    setFormMode("upgrade");
     setModalOpen(true);
   };
 
   const closeModal = () => {
     setModalOpen(false);
-    setRenewMode(false);
+    setFormMode("add");
     setSelected(null);
+  };
+
+  const modalTitles = {
+    add: "Add New Client",
+    edit: "Edit Client",
+    renew: "Renew Membership",
+    upgrade: "Upgrade Package",
+  };
+
+  const modalSubmitHandlers = {
+    add: handleAdd,
+    edit: handleEdit,
+    renew: handleRenew,
+    upgrade: handleUpgrade,
   };
 
   // ── Table columns ───────────────────────────────────────────────────────────
@@ -152,9 +161,7 @@ export default function Clients() {
       key: "trainerId",
       label: "Trainer",
       render: (v) => (
-        <span className="text-sm text-brand-subtle">
-          {getTrainerName(v, trainers) || "—"}
-        </span>
+        <span className="text-sm text-brand-subtle">{getTrainerName(v, trainers) || "—"}</span>
       ),
     },
     {
@@ -169,9 +176,7 @@ export default function Clients() {
       label: "PT",
       render: (v) =>
         v ? (
-          <span className="badge bg-purple-500/10 text-purple-400 border border-purple-500/20">
-            Yes
-          </span>
+          <span className="badge bg-purple-500/10 text-purple-400 border border-purple-500/20">Yes</span>
         ) : (
           <span className="text-brand-muted text-xs">—</span>
         ),
@@ -182,20 +187,33 @@ export default function Clients() {
       render: (v) => <Badge status={v} />,
     },
     {
-      // Renew button — only visible for expiring / expired clients
       key: "id",
       label: "",
-      render: (_, row) =>
-        row.status === "expiring" || row.status === "expired" ? (
+      render: (_, row) => (
+        <div className="flex gap-1">
+          {/* Upgrade — always available */}
           <Button
             size="xs"
-            variant="warning"
-            onClick={(e) => openRenewModal(row, e)}
+            variant="secondary"
+            onClick={(e) => { e.stopPropagation(); openUpgradeModal(row, e); }}
             className="whitespace-nowrap"
+            title="Upgrade Package"
           >
-            <RefreshCw size={12} /> Renew
+            <ArrowUpCircle size={11} />
           </Button>
-        ) : null,
+          {/* Renew — expiring / expired only */}
+          {(row.status === "expiring" || row.status === "expired") && (
+            <Button
+              size="xs"
+              variant="warning"
+              onClick={(e) => openRenewModal(row, e)}
+              className="whitespace-nowrap"
+            >
+              <RefreshCw size={11} /> Renew
+            </Button>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -207,27 +225,16 @@ export default function Clients() {
     { value: "pt", label: "PT Only" },
   ];
 
-  // ── Derive modal title ──────────────────────────────────────────────────────
-  const modalTitle = renewMode
-    ? "Renew Membership"
-    : "Add New Client";
-
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="section-title">Clients</h1>
-          <p className="text-sm text-brand-subtle mt-0.5">
-            {clients.length} total members
-          </p>
+          <p className="text-sm text-brand-subtle mt-0.5">{clients.length} total members</p>
         </div>
         <Button
-          onClick={() => {
-            setSelected(null);
-            setRenewMode(false);
-            setModalOpen(true);
-          }}
+          onClick={() => { setSelected(null); setFormMode("add"); setModalOpen(true); }}
         >
           <UserPlus size={15} /> Add Client
         </Button>
@@ -237,10 +244,7 @@ export default function Clients() {
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-subtle"
-            />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-subtle" />
             <input
               type="text"
               placeholder="Search by name, phone or email..."
@@ -287,50 +291,40 @@ export default function Clients() {
         )}
       </div>
 
-      {/* Add / Renew Client Modal */}
-      <Modal
-        isOpen={modalOpen}
-        onClose={closeModal}
-        title={modalTitle}
-        size="lg"
-      >
+      {/* Add / Renew / Upgrade Modal */}
+      <Modal isOpen={modalOpen} onClose={closeModal} title={modalTitles[formMode]} size="lg">
         <ClientForm
           initial={selected ?? {}}
-          onSubmit={renewMode ? handleRenew : handleAdd}
+          onSubmit={modalSubmitHandlers[formMode]}
           onCancel={closeModal}
           loading={loading}
-          isRenewal={renewMode}
+          mode={formMode}
         />
       </Modal>
 
       {/* Detail / Edit Modal */}
       <Modal
         isOpen={detailOpen}
-        onClose={() => {
-          setDetailOpen(false);
-          setEditMode(false);
-          setSelected(null);
-        }}
-        title={editMode ? "Edit Client" : "Client Profile"}
+        onClose={() => { setDetailOpen(false); setFormMode("add"); setSelected(null); }}
+        title={formMode === "edit" ? "Edit Client" : "Client Profile"}
         size="lg"
       >
-        {selected && !editMode && (
+        {selected && formMode !== "edit" && (
           <ClientDetail
             client={selected}
-            onEdit={() => setEditMode(true)}
+            onEdit={() => setFormMode("edit")}
             onDelete={handleDelete}
-            onRenew={(client) => {
-              setDetailOpen(false);
-              openRenewModal(client);
-            }}
+            onRenew={(client) => { setDetailOpen(false); openRenewModal(client); }}
+            onUpgrade={(client) => { setDetailOpen(false); openUpgradeModal(client); }}
           />
         )}
-        {selected && editMode && (
+        {selected && formMode === "edit" && (
           <ClientForm
             initial={selected}
             onSubmit={handleEdit}
-            onCancel={() => setEditMode(false)}
+            onCancel={() => setFormMode("add")}
             loading={loading}
+            mode="edit"
           />
         )}
       </Modal>

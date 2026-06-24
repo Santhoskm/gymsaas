@@ -118,6 +118,7 @@
 // src/services/api.js
 // Central API service — all backend calls go through here.
 
+// src/services/api.js
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 function getHeaders() {
@@ -138,6 +139,7 @@ async function request(method, path, body = null) {
         localStorage.removeItem("authToken");
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("user");
+        localStorage.removeItem("gym");
         window.location.href = "/login";
         return;
     }
@@ -183,6 +185,8 @@ export const clientsAPI = {
     delete: (id) => request("DELETE", `/api/clients/${id}/`),
     addPayment: (clientId, data) =>
         request("POST", `/api/clients/${clientId}/payments/`, data),
+    renew: (clientId, data) =>
+        request("POST", `/api/clients/${clientId}/renew/`, data),
 };
 
 // ── Packages ──────────────────────────────────────────────────────────────────
@@ -210,26 +214,18 @@ export const activitiesAPI = {
     delete: (id) => request("DELETE", `/api/activities/${id}/`),
 };
 
-// ── Programs (new) ────────────────────────────────────────────────────────────
+// ── Programs ──────────────────────────────────────────────────────────────────
 export const programsAPI = {
     list: () => request("GET", "/api/activities/programs/"),
     create: (data) => request("POST", "/api/activities/programs/", data),
-    update: (id, data) =>
-        request("PUT", `/api/activities/programs/${id}/`, data),
+    update: (id, data) => request("PUT", `/api/activities/programs/${id}/`, data),
     delete: (id) => request("DELETE", `/api/activities/programs/${id}/`),
     addPackage: (programId, data) =>
         request("POST", `/api/activities/programs/${programId}/packages/`, data),
     updatePackage: (programId, pkgId, data) =>
-        request(
-            "PUT",
-            `/api/activities/programs/${programId}/packages/${pkgId}/`,
-            data
-        ),
+        request("PUT", `/api/activities/programs/${programId}/packages/${pkgId}/`, data),
     deletePackage: (programId, pkgId) =>
-        request(
-            "DELETE",
-            `/api/activities/programs/${programId}/packages/${pkgId}/`
-        ),
+        request("DELETE", `/api/activities/programs/${programId}/packages/${pkgId}/`),
 };
 
 // ── Expenses ──────────────────────────────────────────────────────────────────
