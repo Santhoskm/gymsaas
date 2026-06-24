@@ -1,6 +1,11 @@
+# apps/accounts/apps.py
 from django.apps import AppConfig
 
+
 class AccountsConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.accounts'
-    label = 'accounts'  # Add this line - this is important!
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.accounts"
+    label = "accounts"
+
+    def ready(self):
+        import apps.accounts.signals  # noqa — registers post_save signal for Gym

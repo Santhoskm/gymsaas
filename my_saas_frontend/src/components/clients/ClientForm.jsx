@@ -1,6 +1,6 @@
 // src/components/clients/ClientForm.jsx
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input, Select, Toggle } from "../ui/Input";
 import Button from "../ui/Button";
 import { useApp } from "../../hooks/useApp";
@@ -12,22 +12,37 @@ const defaultForm = {
   address: "",
   joinDate: new Date().toISOString().split("T")[0],
   expiryDate: "",
-  packageId: "",
+  // programPackageId replaces the old packageId — only program_package is used now
   programPackageId: "",
   trainerId: "",
   personalTraining: false,
-  paymentMethod: "cash",
   photo: null,
 };
 
-export default function ClientForm({ initial = {}, onSubmit, onCancel, loading }) {
-  const { trainers, packages, programs } = useApp();
+/**
+ * ClientForm
+ *
+ * Props:
+ *   initial      – existing client data for edit / renew mode
+ *   onSubmit     – called with the form payload
+ *   onCancel     – called on cancel
+ *   loading      – shows spinner on submit button
+ *   isRenewal    – when true, shows "Renew Membership" UI instead of "Save Changes"
+ */
+export default function ClientForm({
+  initial = {},
+  onSubmit,
+  onCancel,
+  loading,
+  isRenewal = false,
+}) {
+  const { trainers, programs } = useApp();
 
-  // Find which program the initial program_package belongs to (for edit mode)
+  // ── Derive which program owns the pre-selected package (edit / renew mode) ──
   const initialProgramId = (() => {
     if (!initial.programPackageId) return "";
     const prog = programs.find((p) =>
-      p.packages?.some((pk) => pk.id === initial.programPackageId)
+      p.packages?.some((pk) => pk.id === Number(initial.programPackageId))
     );
     return prog ? String(prog.id) : "";
   })();
@@ -35,11 +50,23 @@ export default function ClientForm({ initial = {}, onSubmit, onCancel, loading }
   const [form, setForm] = useState({
     ...defaultForm,
     ...initial,
-    packageId: initial.packageId ? String(initial.packageId) : "",
-    programPackageId: initial.programPackageId ? String(initial.programPackageId) : "",
-    trainerId: initial.trainerId ? String(initial.trainerId) : "",
-    paymentMethod: initial.paymentMethod || initial.payment_method || "cash",
+    // Normalize snake_case fields that come back from the backend
+    joinDate: initial.join_date ?? initial.joinDate ?? defaultForm.joinDate,
+    expiryDate: initial.expiry_date ?? initial.expiryDate ?? "",
+    programPackageId: initial.program_package
+      ? String(initial.program_package)
+      : initial.programPackageId
+        ? String(initial.programPackageId)
+        : "",
+    trainerId: initial.trainer
+      ? String(initial.trainer)
+      : initial.trainerId
+        ? String(initial.trainerId)
+        : "",
+    personalTraining:
+      initial.personal_training ?? initial.personalTraining ?? false,
   });
+
   const [selectedProgramId, setSelectedProgramId] = useState(initialProgramId);
   const [errors, setErrors] = useState({});
 
@@ -48,10 +75,39 @@ export default function ClientForm({ initial = {}, onSubmit, onCancel, loading }
     if (errors[key]) setErrors((p) => ({ ...p, [key]: "" }));
   };
 
+  // ── When trainer changes, remove PT program selection if trainer can't offer PT ──
+  useEffect(() => {
+    if (!form.trainerId) return;
+    const trainer = trainers.find((t) => t.id === Number(form.trainerId));
+    if (!trainer?.offers_personal_training) {
+      // Deselect if currently selected program is a PT program
+      const currentProg = programs.find((p) => p.id === Number(selectedProgramId));
+      if (currentProg?.program_type === "personal_training") {
+        setSelectedProgramId("");
+        set("programPackageId", "");
+        if (form.personalTraining) set("personalTraining", false);
+      }
+    }
+  }, [form.trainerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Filter programs: hide PT programs unless the selected trainer offers PT ──
+  const selectedTrainer = trainers.find((t) => t.id === Number(form.trainerId));
+  const trainerOffersPT = selectedTrainer?.offers_personal_training === true;
+
+  const visiblePrograms = programs.filter((p) => {
+    if (!p.is_active) return false;
+    if (p.program_type === "personal_training") return trainerOffersPT;
+    return true;
+  });
+
+  // ── Packages under the currently selected program ──────────────────────────
   const programPackages = selectedProgramId
-    ? programs.find((p) => p.id === Number(selectedProgramId))?.packages || []
+    ? programs.find((p) => p.id === Number(selectedProgramId))?.packages?.filter(
+      (pk) => pk.is_active
+    ) ?? []
     : [];
 
+  // ── Validation ─────────────────────────────────────────────────────────────
   const validate = () => {
     const e = {};
     if (!form.name.trim()) e.name = "Name is required";
@@ -67,14 +123,32 @@ export default function ClientForm({ initial = {}, onSubmit, onCancel, loading }
     if (!validate()) return;
     onSubmit({
       ...form,
-      packageId: form.packageId ? Number(form.packageId) : null,
       programPackageId: form.programPackageId ? Number(form.programPackageId) : null,
       trainerId: form.trainerId ? Number(form.trainerId) : null,
     });
   };
 
+  // ── Renewal label ──────────────────────────────────────────────────────────
+  const submitLabel = isRenewal
+    ? "Renew Membership"
+    : initial.id
+      ? "Save Changes"
+      : "Add Client";
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Renewal banner */}
+      {isRenewal && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm font-medium">
+          ♻️ Renewing membership for <span className="font-bold">{initial.name}</span>
+          {initial.expiryDate && (
+            <span className="text-xs text-amber-300 ml-auto">
+              Previous expiry: {initial.expiryDate}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Name & Phone */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
@@ -110,7 +184,7 @@ export default function ClientForm({ initial = {}, onSubmit, onCancel, loading }
         />
       </div>
 
-      {/* Dates */}
+      {/* Dates — auto-focus expiry on renewal */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
           label="Join Date *"
@@ -120,33 +194,62 @@ export default function ClientForm({ initial = {}, onSubmit, onCancel, loading }
           error={errors.joinDate}
         />
         <Input
-          label="Expiry Date *"
+          label={isRenewal ? "New Expiry Date *" : "Expiry Date *"}
           type="date"
           value={form.expiryDate}
           onChange={(e) => set("expiryDate", e.target.value)}
           error={errors.expiryDate}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus={isRenewal}
         />
       </div>
 
-      {/* Program (from Activities) & Program Package */}
+      {/* Trainer */}
+      <div>
+        <Select
+          label="Trainer"
+          value={form.trainerId}
+          onChange={(e) => set("trainerId", e.target.value)}
+        >
+          <option value="">No trainer assigned</option>
+          {trainers
+            .filter((t) => t.status === "active")
+            .map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.offers_personal_training ? " 🏋️" : ""}
+              </option>
+            ))}
+        </Select>
+        {form.trainerId && !trainerOffersPT && (
+          <p className="text-xs text-brand-subtle mt-1">
+            This trainer does not offer personal training — PT programs are hidden.
+          </p>
+        )}
+      </div>
+
+      {/* Program selection */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Select
           label="Program"
           value={selectedProgramId}
           onChange={(e) => {
             setSelectedProgramId(e.target.value);
-            set("programPackageId", "");
+            set("programPackageId", ""); // reset package when program changes
+            // Auto-toggle PT flag when PT program selected
+            const prog = programs.find((p) => p.id === Number(e.target.value));
+            if (prog?.program_type === "personal_training") {
+              set("personalTraining", true);
+            }
           }}
         >
           <option value="">No program</option>
-          {programs
-            .filter((p) => p.is_active)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.icon ? `${p.icon} ` : ""}
-                {p.name}
-              </option>
-            ))}
+          {visiblePrograms.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.icon ? `${p.icon} ` : ""}
+              {p.name}
+            </option>
+          ))}
         </Select>
 
         <Select
@@ -170,96 +273,27 @@ export default function ClientForm({ initial = {}, onSubmit, onCancel, loading }
         </Select>
       </div>
 
-      {/* Membership Package & Trainer */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Select
-          label="Membership Package"
-          value={form.packageId}
-          onChange={(e) => set("packageId", e.target.value)}
-        >
-          <option value="">No package</option>
-          {packages.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} — ₹{p.price}
-            </option>
-          ))}
-        </Select>
-
-        <Select
-          label="Trainer"
-          value={form.trainerId}
-          onChange={(e) => set("trainerId", e.target.value)}
-        >
-          <option value="">No trainer assigned</option>
-          {trainers
-            .filter((t) => t.status === "active")
-            .map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-        </Select>
-      </div>
-
-      {/* Payment Method — Cash or UPI */}
-      <div>
-        <label className="text-xs font-medium text-brand-subtle uppercase tracking-wider block mb-2">
-          Payment Method
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          {/* Cash */}
-          <button
-            type="button"
-            onClick={() => set("paymentMethod", "cash")}
-            className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${form.paymentMethod === "cash"
-                ? "border-emerald-500 bg-emerald-500/10"
-                : "border-brand-border bg-brand-surface hover:border-brand-muted"
-              }`}
-          >
-            <span className="text-2xl">💵</span>
-            <div className="text-left">
-              <p className={`text-sm font-semibold ${form.paymentMethod === "cash" ? "text-emerald-400" : "text-brand-text"}`}>
-                Cash
-              </p>
-              <p className="text-[10px] text-brand-subtle">Pay in hand</p>
-            </div>
-            <div className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center ${form.paymentMethod === "cash" ? "border-emerald-500 bg-emerald-500" : "border-brand-border"
-              }`}>
-              {form.paymentMethod === "cash" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-            </div>
-          </button>
-
-          {/* UPI */}
-          <button
-            type="button"
-            onClick={() => set("paymentMethod", "upi")}
-            className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${form.paymentMethod === "upi"
-                ? "border-blue-500 bg-blue-500/10"
-                : "border-brand-border bg-brand-surface hover:border-brand-muted"
-              }`}
-          >
-            <span className="text-2xl">📱</span>
-            <div className="text-left">
-              <p className={`text-sm font-semibold ${form.paymentMethod === "upi" ? "text-blue-400" : "text-brand-text"}`}>
-                UPI
-              </p>
-              <p className="text-[10px] text-brand-subtle">GPay / PhonePe</p>
-            </div>
-            <div className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center ${form.paymentMethod === "upi" ? "border-blue-500 bg-blue-500" : "border-brand-border"
-              }`}>
-              {form.paymentMethod === "upi" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-            </div>
-          </button>
-        </div>
-      </div>
-
-      {/* Personal Training toggle */}
+      {/* Personal Training toggle — read-only when PT program is selected */}
       <div className="py-1">
         <Toggle
           label="Personal Training"
           checked={form.personalTraining}
           onChange={(v) => set("personalTraining", v)}
+          disabled={
+            (() => {
+              const prog = programs.find((p) => p.id === Number(selectedProgramId));
+              return prog?.program_type === "personal_training";
+            })()
+          }
         />
+        {(() => {
+          const prog = programs.find((p) => p.id === Number(selectedProgramId));
+          return prog?.program_type === "personal_training" ? (
+            <p className="text-xs text-purple-400 mt-1">
+              Automatically enabled — client is enrolled in a PT program.
+            </p>
+          ) : null;
+        })()}
       </div>
 
       {/* Actions */}
@@ -268,7 +302,7 @@ export default function ClientForm({ initial = {}, onSubmit, onCancel, loading }
           Cancel
         </Button>
         <Button type="submit" loading={loading}>
-          {initial.id ? "Save Changes" : "Add Client"}
+          {submitLabel}
         </Button>
       </div>
     </form>

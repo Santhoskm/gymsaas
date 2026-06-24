@@ -1,17 +1,20 @@
+// src/pages/Dashboard.jsx
+
 import { useNavigate } from "react-router-dom";
 import {
   DollarSign, Users, UserPlus, Dumbbell, AlertTriangle,
-  Plus, TrendingUp, Activity, MessageCircle, Phone
+  Plus, Activity, MessageCircle, Phone,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend
+  Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { useApp } from "../hooks/useApp";
 import { StatCard } from "../components/ui/Card";
-import { formatCurrency, formatDate, getPackageName } from "../utils";
-import { revenueData, clientGrowthData, activityFeed } from "../data";
+import { formatCurrency, formatDate } from "../utils";
 import Button from "../components/ui/Button";
+
+// ── Tooltips ──────────────────────────────────────────────────────────────────
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -41,9 +44,30 @@ const ClientTooltip = ({ active, payload, label }) => {
   );
 };
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function Dashboard() {
-  const { stats } = useApp();
+  // dashboardData comes from the real API via useApp → dashboardAPI.getStats()
+  const { stats, dashboardData } = useApp();
   const navigate = useNavigate();
+
+  // Derive chart data from API response; fall back to [] while loading
+  const revenueChartData = dashboardData?.revenue_chart ?? [];
+  const clientGrowthData = dashboardData?.client_growth ?? [];
+  const activityFeedData = dashboardData?.activity_feed ?? [];
+
+  // Use API stats when available, fall back to computed stats from client list
+  const apiStats = dashboardData?.stats;
+  const monthlyRevenue = apiStats?.monthly_revenue ?? stats.monthlyRevenue;
+  const totalClients = apiStats?.total_clients ?? stats.totalClients;
+  const activeClients = apiStats?.active_clients ?? stats.activeClients;
+  const newThisMonth = apiStats?.new_this_month ?? stats.newClientsThisMonth;
+  const ptClients = apiStats?.pt_clients ?? stats.ptClients;
+
+  // Expiring clients come from the API expiring_clients list (richer data)
+  // but fall back to the locally computed list if API not loaded yet
+  const expiringClients =
+    dashboardData?.expiring_clients ?? stats.expiringClients ?? [];
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -74,34 +98,31 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard
           title="Monthly Revenue"
-          value={formatCurrency(stats.monthlyRevenue)}
+          value={formatCurrency(monthlyRevenue)}
           icon={DollarSign}
           iconColor="text-emerald-400"
-          trend={12}
-          trendLabel="vs last month"
+          trendLabel="this month"
           onClick={() => navigate("/expenses")}
         />
         <StatCard
           title="Total Clients"
-          value={stats.totalClients}
+          value={totalClients}
           icon={Users}
           iconColor="text-blue-400"
-          trend={8}
-          trendLabel={`${stats.activeClients} active`}
+          trendLabel={`${activeClients} active`}
           onClick={() => navigate("/clients")}
         />
         <StatCard
           title="New Clients"
-          value={stats.newClientsThisMonth}
+          value={newThisMonth}
           icon={UserPlus}
           iconColor="text-brand-orange"
-          trend={5}
           trendLabel="this month"
           onClick={() => navigate("/clients")}
         />
         <StatCard
           title="PT Clients"
-          value={stats.ptClients}
+          value={ptClients}
           icon={Dumbbell}
           iconColor="text-purple-400"
           trendLabel="personal training"
@@ -109,7 +130,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="Expiring Soon"
-          value={stats.expiringClients.length}
+          value={expiringClients.length}
           icon={AlertTriangle}
           iconColor="text-amber-400"
           trendLabel="within 7 days"
@@ -119,19 +140,16 @@ export default function Dashboard() {
 
       {/* Charts row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Revenue Chart */}
+        {/* Revenue Chart — real data from dashboardData.revenue_chart */}
         <div className="xl:col-span-2 card p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="font-display text-lg font-bold text-brand-text">Revenue vs Expenses</h2>
               <p className="text-xs text-brand-subtle mt-0.5">Last 6 months overview</p>
             </div>
-            <span className="badge bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">
-              +12% MoM
-            </span>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={revenueData}>
+            <AreaChart data={revenueChartData}>
               <defs>
                 <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#E8001D" stopOpacity={0.3} />
@@ -153,12 +171,12 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Client Growth */}
+        {/* Client Growth — real data from dashboardData.client_growth */}
         <div className="card p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="font-display text-lg font-bold text-brand-text">Client Growth</h2>
-              <p className="text-xs text-brand-subtle mt-0.5">New vs total</p>
+              <p className="text-xs text-brand-subtle mt-0.5">New members per month</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -168,8 +186,7 @@ export default function Dashboard() {
               <YAxis tick={{ fill: "#888", fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip content={<ClientTooltip />} />
               <Legend wrapperStyle={{ fontSize: 12, color: "#888" }} />
-              <Bar dataKey="new" name="New" fill="#E8001D" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="total" name="Total" fill="#3A3A3A" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="new" name="New Clients" fill="#E8001D" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -177,61 +194,71 @@ export default function Dashboard() {
 
       {/* Bottom row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Activity Feed */}
+        {/* Activity Feed — real data from dashboardData.activity_feed */}
         <div className="xl:col-span-2 card p-5">
           <div className="flex items-center gap-2 mb-4">
             <Activity size={16} className="text-brand-red" />
             <h2 className="font-display text-lg font-bold text-brand-text">Recent Activity</h2>
           </div>
           <div className="space-y-1">
-            {activityFeed.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-brand-surface transition-colors"
-              >
-                <span className="text-base shrink-0 mt-0.5">{item.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-brand-text leading-snug">{item.message}</p>
-                  <p className="text-xs text-brand-subtle mt-0.5">{item.time}</p>
+            {activityFeedData.length === 0 ? (
+              <p className="text-sm text-brand-subtle text-center py-8">No recent activity yet.</p>
+            ) : (
+              activityFeedData.map((item, idx) => (
+                <div
+                  key={`${item.type}-${idx}`}
+                  className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-brand-surface transition-colors"
+                >
+                  <span className="text-base shrink-0 mt-0.5">{item.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-brand-text leading-snug">{item.message}</p>
+                    <p className="text-xs text-brand-subtle mt-0.5">{item.time}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
-        {/* Expiring memberships */}
+        {/* Expiring memberships — real data from dashboardData.expiring_clients */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <AlertTriangle size={16} className="text-amber-400" />
             <h2 className="font-display text-lg font-bold text-brand-text">Expiring Soon</h2>
           </div>
-          {stats.expiringClients.length === 0 ? (
+          {expiringClients.length === 0 ? (
             <p className="text-sm text-brand-subtle text-center py-8">No expiring memberships 🎉</p>
           ) : (
             <div className="space-y-3">
-              {stats.expiringClients.map((client) => (
+              {expiringClients.map((client) => (
                 <div
                   key={client.id}
                   className="flex items-center justify-between p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl"
                 >
                   <div>
                     <p className="text-sm font-medium text-brand-text">{client.name}</p>
-                    <p className="text-xs text-brand-subtle mt-0.5">{getPackageName(client.packageId)}</p>
-                    <p className="text-xs text-amber-400 mt-0.5">Expires {formatDate(client.expiryDate)}</p>
+                    <p className="text-xs text-brand-subtle mt-0.5">{client.phone}</p>
+                    <p className="text-xs text-amber-400 mt-0.5">
+                      Expires {formatDate(client.expiry_date ?? client.expiryDate)}
+                    </p>
                   </div>
                   <div className="flex gap-1.5">
-                    <button
+                    <a
+                      href={`https://wa.me/91${client.phone}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="p-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded-lg text-green-400 transition-colors"
                       title="WhatsApp"
                     >
                       <MessageCircle size={14} />
-                    </button>
-                    <button
+                    </a>
+                    <a
+                      href={`tel:${client.phone}`}
                       className="p-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg text-blue-400 transition-colors"
                       title="Call"
                     >
                       <Phone size={14} />
-                    </button>
+                    </a>
                   </div>
                 </div>
               ))}
