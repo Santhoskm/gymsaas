@@ -365,6 +365,7 @@ export function AppProvider({ children }) {
       programPackageId: c.program_package,
       trainerId: c.trainer,
       personalTraining: c.personal_training,
+      paymentMethod: c.payment_method || "cash",
       status: getMembershipStatus(c.expiry_date),
     };
   }
@@ -383,6 +384,7 @@ export function AppProvider({ children }) {
         program_package: formData.programPackageId || null,
         trainer: formData.trainerId || null,
         personal_training: formData.personalTraining,
+        payment_method: formData.paymentMethod || "cash",
       };
       const newClient = await clientsAPI.create(payload);
       setClients((prev) => [normalizeClient(newClient), ...prev]);
@@ -407,6 +409,7 @@ export function AppProvider({ children }) {
         program_package: formData.programPackageId || null,
         trainer: formData.trainerId || null,
         personal_training: formData.personalTraining,
+        payment_method: formData.paymentMethod || "cash",
       };
       const updated = await clientsAPI.update(id, payload);
       setClients((prev) =>

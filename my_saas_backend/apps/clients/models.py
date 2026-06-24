@@ -26,6 +26,11 @@ class Client(models.Model):
         ('inactive', 'Inactive'),
     )
 
+    PAYMENT_METHOD_CHOICES = (
+        ('cash', 'Cash'),
+        ('upi', 'UPI'),
+    )
+
     gym = models.ForeignKey(Gym, on_delete=models.CASCADE, related_name='clients')
     name = models.CharField(max_length=150)
     phone = models.CharField(max_length=15)
@@ -45,6 +50,11 @@ class Client(models.Model):
         null=True, blank=True, related_name='clients'
     )
     personal_training = models.BooleanField(default=False)
+    payment_method = models.CharField(
+        max_length=10,
+        choices=PAYMENT_METHOD_CHOICES,
+        default='cash'
+    )
     photo = models.ImageField(upload_to='client_photos/', null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -73,8 +83,6 @@ class Payment(models.Model):
     METHOD_CHOICES = (
         ('cash', 'Cash'),
         ('upi', 'UPI'),
-        ('card', 'Card'),
-        ('bank_transfer', 'Bank Transfer'),
     )
 
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='payments')
