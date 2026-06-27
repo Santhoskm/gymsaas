@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/clients", label: "Clients", icon: Users },
   { to: "/trainers", label: "Trainers", icon: UserCheck },
   { to: "/expenses", label: "Expenses", icon: Receipt },
@@ -51,7 +51,7 @@ export default function Sidebar({ open, onClose }) {
             Main Menu
           </p>
           {navItems.map(({ to, label, icon: Icon }) => {
-            const active = to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
+            const active = location.pathname.startsWith(to);
             return (
               <NavLink
                 key={to}

@@ -527,7 +527,8 @@ export function AppProvider({ children }) {
       ]);
       setClients((c || []).map(normalizeClient));
       setTrainers(t || []);
-      setExpenses(e || []);
+      // setExpenses(e || []);
+      setExpenses(e?.expenses ?? (Array.isArray(e) ? e : []));
       setActivities(a || []);
       setPackages(p || []);
       setPrograms(prog || []);
@@ -772,9 +773,28 @@ export function AppProvider({ children }) {
 
   // ── Expenses ──────────────────────────────────────────────────────────────
 
+  // UI shows human labels ("Trainer Salary"); backend model only accepts these choice keys
+  const expenseTypeMap = {
+    "Trainer Salary": "trainer_salary",
+    Equipment: "equipment",
+    Utilities: "utilities",
+    Maintenance: "maintenance",
+    Marketing: "marketing",
+    Supplies: "supplies",
+    Rent: "rent",
+    Other: "other",
+  };
+
   const addExpense = useCallback(async (formData) => {
     try {
-      const newExpense = await expensesAPI.create(formData);
+      const payload = {
+        type: expenseTypeMap[formData.type] || formData.type,
+        description: formData.description,
+        amount: formData.amount,
+        date: formData.date,
+        trainer: formData.trainerId || null,
+      };
+      const newExpense = await expensesAPI.create(payload);
       setExpenses((prev) => [newExpense, ...prev]);
       toast.success("Expense recorded!");
     } catch (err) {

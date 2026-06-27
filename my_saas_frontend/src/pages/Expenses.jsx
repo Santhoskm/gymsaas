@@ -65,7 +65,7 @@ export default function Expenses() {
   const { expenses, addExpense, deleteExpense } = useApp();
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [monthFilter, setMonthFilter] = useState("2025-03");
+  const [monthFilter, setMonthFilter] = useState(new Date().toISOString().slice(0, 7));
 
   const filtered = useMemo(() =>
     expenses.filter((e) => !monthFilter || e.date.startsWith(monthFilter))
