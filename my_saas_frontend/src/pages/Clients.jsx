@@ -108,9 +108,12 @@ export default function Clients() {
 
   const openRenewModal = (client, e) => {
     e?.stopPropagation();
-    const nextMonth = new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    setSelected({ ...client, expiryDate: nextMonth.toISOString().split("T")[0] });
+    // Don't force expiryDate to "today + 1 month" here — that overwrites the
+    // client's real current expiry before the form even opens, which caused
+    // renewals to be calculated from the wrong base date.
+    // ClientForm itself extends from the client's existing expiry date once
+    // a package/duration is picked (see addMonths effect in ClientForm.jsx).
+    setSelected({ ...client });
     setFormMode("renew");
     setModalOpen(true);
   };
@@ -261,8 +264,8 @@ export default function Clients() {
                   key={opt.value}
                   onClick={() => setFilter(opt.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === opt.value
-                      ? "bg-brand-red text-white"
-                      : "bg-brand-surface border border-brand-border text-brand-subtle hover:text-brand-text"
+                    ? "bg-brand-red text-white"
+                    : "bg-brand-surface border border-brand-border text-brand-subtle hover:text-brand-text"
                     }`}
                 >
                   {opt.label}

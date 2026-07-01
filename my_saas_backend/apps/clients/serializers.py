@@ -150,14 +150,14 @@ class ClientSerializer(serializers.ModelSerializer):
         client = super().update(instance, validated_data)
         client.update_status()
 
-        # Auto-set personal_training flag if program type changed to PT
-        if (
-            client.program_package
-            and hasattr(client.program_package, 'program')
-            and client.program_package.program.program_type == 'personal_training'
-        ):
-            if not client.personal_training:
-                client.personal_training = True
+        # Sync personal_training to match the program_package's actual type.
+        # This is symmetric (turns it on AND off) so a client moved off a PT
+        # package no longer shows as PT, and it never depends on which
+        # trainer is assigned — only on the package itself.
+        if client.program_package and hasattr(client.program_package, 'program'):
+            is_pt_pkg = client.program_package.program.program_type == 'personal_training'
+            if client.personal_training != is_pt_pkg:
+                client.personal_training = is_pt_pkg
                 client.save(update_fields=['personal_training'])
 
         new_pkg = client.program_package_id

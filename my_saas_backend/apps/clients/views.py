@@ -164,12 +164,22 @@ class ClientRenewView(APIView):
         new_expiry = request.data.get('expiry_date')
         new_pkg = request.data.get('program_package')
         new_trainer = request.data.get('trainer')
-        new_pt = request.data.get('personal_training', client.personal_training)
         amount_paid = request.data.get('amount_paid')
         payment_method = request.data.get('payment_method', client.payment_method)
         note = request.data.get('note', '')
         requested_action = request.data.get('action', None)
         today = datetime.date.today()
+
+        # personal_training is derived from the program package's type, not from
+        # the trainer being assigned. Assigning a trainer who *can* do PT does
+        # not, by itself, mean this client is enrolled in a PT program.
+        # We only honor an explicit personal_training value from the request
+        # when no program_package is being changed (e.g. a manual override);
+        # otherwise it's recalculated below from the package itself.
+        new_pt = client.personal_training
+        explicit_pt = request.data.get('personal_training', None)
+        if explicit_pt is not None and not new_pkg:
+            new_pt = explicit_pt
 
         # Resolve action
         if requested_action in ('renewal', 'upgrade', 'addon'):
@@ -200,15 +210,16 @@ class ClientRenewView(APIView):
 
         if new_pkg:
             client.program_package_id = new_pkg
-            # Auto-set PT flag if new program is PT type
+            # PT flag follows the package's program_type — set or unset to match,
+            # regardless of which trainer is assigned.
             try:
                 from apps.activities.models import ProgramPackage
                 pkg_obj = ProgramPackage.objects.select_related('program').get(pk=new_pkg)
-                if pkg_obj.program.program_type == 'personal_training':
-                    new_pt = True
+                new_pt = (pkg_obj.program.program_type == 'personal_training')
             except Exception:
                 pass
 
+        # Assigning/changing the trainer never changes the PT flag on its own.
         if new_trainer is not None:
             client.trainer_id = new_trainer or None
 
