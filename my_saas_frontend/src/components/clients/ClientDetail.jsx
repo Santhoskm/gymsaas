@@ -25,11 +25,12 @@ function ActionBadge({ action }) {
   );
 }
 
-export default function ClientDetail({ client, onEdit, onDelete, onRenew, onUpgrade }) {
+export default function ClientDetail({ client, onEdit, onDelete, onRenew, onUpgrade, onPayBalance }) {
   const { trainers, programs } = useApp();
   const [showHistory, setShowHistory] = useState(false);
 
   const days = daysUntilExpiry(client.expiryDate ?? client.expiry_date);
+  const balanceDue = Number(client.balanceDue ?? client.balance_due ?? 0);
 
   const programName =
     client.program_name ??
@@ -88,6 +89,9 @@ export default function ClientDetail({ client, onEdit, onDelete, onRenew, onUpgr
           { label: "Trainer", value: trainerName },
           { label: "Joined", value: formatDate(client.joinDate ?? client.join_date), icon: Calendar },
           { label: "Expires", value: formatDate(client.expiryDate ?? client.expiry_date), icon: Calendar },
+          ...(client.dateOfBirth ?? client.date_of_birth
+            ? [{ label: "Date of Birth", value: formatDate(client.dateOfBirth ?? client.date_of_birth), icon: Calendar }]
+            : []),
         ].map(({ label, value }) => (
           <div key={label} className="bg-brand-surface rounded-xl border border-brand-border p-3">
             <p className="text-[10px] text-brand-subtle uppercase tracking-wider font-medium">{label}</p>
@@ -96,11 +100,31 @@ export default function ClientDetail({ client, onEdit, onDelete, onRenew, onUpgr
         ))}
       </div>
 
+      {/* Outstanding balance alert */}
+      {balanceDue > 0 && (
+        <div className="flex items-center justify-between p-4 rounded-xl border bg-amber-500/5 border-amber-500/30">
+          <div>
+            <p className="text-sm font-semibold text-amber-400">
+              Pending balance: {formatCurrency(balanceDue)}
+            </p>
+            <p className="text-xs text-brand-subtle mt-0.5">
+              Total due {formatCurrency(client.totalDue ?? client.total_due ?? 0)} · Paid so far{" "}
+              {formatCurrency(client.totalPaid ?? client.total_paid ?? 0)}
+            </p>
+          </div>
+          {onPayBalance && (
+            <Button size="sm" onClick={() => onPayBalance(client)}>
+              Pay Balance
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Expiry / renewal alert */}
       {isExpiringSoon && (
         <div className={`flex items-center justify-between p-4 rounded-xl border ${client.status === "expired"
-            ? "bg-red-500/5 border-red-500/30"
-            : "bg-amber-500/5 border-amber-500/30"
+          ? "bg-red-500/5 border-red-500/30"
+          : "bg-amber-500/5 border-amber-500/30"
           }`}>
           <div>
             <p className={`text-sm font-semibold ${client.status === "expired" ? "text-red-400" : "text-amber-400"}`}>

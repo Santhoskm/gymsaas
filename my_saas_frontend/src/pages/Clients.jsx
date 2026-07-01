@@ -11,13 +11,14 @@ import { Table, Badge } from "../components/ui/Table";
 import { EmptyState } from "../components/ui/Card";
 import ClientForm from "../components/clients/ClientForm";
 import ClientDetail from "../components/clients/ClientDetail";
-import { formatDate, getTrainerName } from "../utils";
+import PayBalanceModal from "../components/clients/PayBalanceModal";
+import { formatDate, getTrainerName, formatCurrency } from "../utils";
 
 export default function Clients() {
   const {
     clients, trainers,
     addClient, updateClient, deleteClient,
-    renewClient, upgradeClient,
+    renewClient, upgradeClient, payBalance,
   } = useApp();
 
   const location = useLocation();
@@ -31,6 +32,8 @@ export default function Clients() {
   const [formMode, setFormMode] = useState("add");
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [payBalanceOpen, setPayBalanceOpen] = useState(false);
+  const [payBalanceClient, setPayBalanceClient] = useState(null);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -104,6 +107,11 @@ export default function Clients() {
     setSelected(client);
     setFormMode("add");
     setDetailOpen(true);
+  };
+
+  const openPayBalance = (client) => {
+    setPayBalanceClient(client);
+    setPayBalanceOpen(true);
   };
 
   const openRenewModal = (client, e) => {
@@ -180,6 +188,23 @@ export default function Clients() {
       render: (v) =>
         v ? (
           <span className="badge bg-purple-500/10 text-purple-400 border border-purple-500/20">Yes</span>
+        ) : (
+          <span className="text-brand-muted text-xs">—</span>
+        ),
+    },
+    {
+      key: "balanceDue",
+      label: "Pending",
+      render: (v, row) =>
+        Number(v) > 0 ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); openPayBalance(row); }}
+            className="text-xs font-semibold text-amber-400 hover:text-amber-300 hover:underline underline-offset-2 transition-colors"
+            title="Click to complete this payment"
+          >
+            {formatCurrency(v)}
+          </button>
         ) : (
           <span className="text-brand-muted text-xs">—</span>
         ),
@@ -319,6 +344,7 @@ export default function Clients() {
             onDelete={handleDelete}
             onRenew={(client) => { setDetailOpen(false); openRenewModal(client); }}
             onUpgrade={(client) => { setDetailOpen(false); openUpgradeModal(client); }}
+            onPayBalance={openPayBalance}
           />
         )}
         {selected && formMode === "edit" && (
@@ -331,6 +357,18 @@ export default function Clients() {
           />
         )}
       </Modal>
+
+      {/* Pay Balance Modal */}
+      <PayBalanceModal
+        isOpen={payBalanceOpen}
+        onClose={() => { setPayBalanceOpen(false); setPayBalanceClient(null); }}
+        client={payBalanceClient}
+        onSubmit={async (id, data) => {
+          const updated = await payBalance(id, data);
+          // Keep the currently-open client detail view in sync with the new balance
+          if (updated) setSelected((prev) => (prev && prev.id === id ? { ...prev, ...updated, balanceDue: updated.balance_due, totalPaid: updated.total_paid, totalDue: updated.total_due } : prev));
+        }}
+      />
     </div>
   );
 }

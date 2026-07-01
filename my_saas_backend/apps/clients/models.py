@@ -37,6 +37,7 @@ class Client(models.Model):
     phone = models.CharField(max_length=15)
     email = models.EmailField(blank=True, null=True)
     address = models.TextField(blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
     join_date = models.DateField(default=datetime.date.today)
     expiry_date = models.DateField(default=datetime.date.today)
     package = models.ForeignKey(
@@ -54,6 +55,11 @@ class Client(models.Model):
     payment_method = models.CharField(max_length=10, choices=PAYMENT_METHOD_CHOICES, default='cash')
     photo = models.ImageField(upload_to='client_photos/', null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    # Cumulative amount charged to this client across enrollment / renewals /
+    # upgrades / add-ons. Incremented whenever a new charge is applied
+    # (see ClientSerializer / ClientRenewView). Compared against total_paid
+    # (sum of Payment rows) to compute balance_due.
+    total_due = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -74,6 +80,23 @@ class Client(models.Model):
         else:
             self.status = 'active'
         self.save(update_fields=['status'])
+
+    def charge(self, amount):
+        """Add an amount to this client's cumulative total_due and persist it."""
+        if not amount:
+            return
+        self.total_due = (self.total_due or 0) + amount
+        self.save(update_fields=['total_due'])
+
+    @property
+    def total_paid(self):
+        from django.db.models import Sum
+        return self.payments.aggregate(s=Sum('amount'))['s'] or 0
+
+    @property
+    def balance_due(self):
+        due = (self.total_due or 0) - self.total_paid
+        return due if due > 0 else 0
 
     @property
     def is_pt_client(self):

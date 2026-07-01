@@ -11,13 +11,12 @@ import { formatCurrency } from "../utils";
 // ── Program type config ───────────────────────────────────────────────────────
 const PROGRAM_TYPES = [
   { value: "regular_membership", label: "Regular Membership", icon: "🏋️", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
+  { value: "personal_training", label: "Personal Training", icon: "🏆", color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20" },
   { value: "offer", label: "Offer / Special", icon: "🎁", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
   { value: "other", label: "Other Activity", icon: "⚡", color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20" },
 ];
 
-const iconOptions = ["🏋️", "🥊", "🧘", "🔥", "💪", "🤸", "🏃", "⚡", "🎯", "🥋", "💃", "🏆", "🎁", "🌟", "🏊", "🚴"];
-
-const defaultProgramForm = { name: "", program_type: "regular_membership", description: "", icon: "🏋️" };
+const defaultProgramForm = { name: "", program_type: "regular_membership", description: "" };
 const defaultPackageForm = { name: "", duration_months: "", price: "" };
 
 // ── Program Form (Add / Edit program) ────────────────────────────────────────
@@ -52,32 +51,12 @@ function ProgramForm({ initial = {}, onSubmit, onCancel, loading }) {
               type="button"
               onClick={() => set("program_type", t.value)}
               className={`p-3 rounded-xl border text-center transition-all ${form.program_type === t.value
-                  ? `border-brand-red bg-brand-red/10`
-                  : "border-brand-border hover:border-brand-muted bg-brand-surface"
+                ? `border-brand-red bg-brand-red/10`
+                : "border-brand-border hover:border-brand-muted bg-brand-surface"
                 }`}
             >
               <div className="text-xl mb-1">{t.icon}</div>
               <p className="text-[11px] font-medium text-brand-text leading-tight">{t.label}</p>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Icon selector */}
-      <div>
-        <label className="text-xs font-medium text-brand-subtle uppercase tracking-wider block mb-2">Icon</label>
-        <div className="flex flex-wrap gap-2">
-          {iconOptions.map((icon) => (
-            <button
-              key={icon}
-              type="button"
-              onClick={() => set("icon", icon)}
-              className={`w-9 h-9 text-lg rounded-xl border transition-colors ${form.icon === icon
-                  ? "border-brand-red bg-brand-red/10"
-                  : "border-brand-border hover:border-brand-muted bg-brand-surface"
-                }`}
-            >
-              {icon}
             </button>
           ))}
         </div>
@@ -363,8 +342,8 @@ export default function Activities() {
             key={tab.value}
             onClick={() => setFilterType(tab.value)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${filterType === tab.value
-                ? "bg-brand-red text-white border-brand-red"
-                : "bg-brand-surface text-brand-subtle border-brand-border hover:border-brand-muted"
+              ? "bg-brand-red text-white border-brand-red"
+              : "bg-brand-surface text-brand-subtle border-brand-border hover:border-brand-muted"
               }`}
           >
             {tab.label}

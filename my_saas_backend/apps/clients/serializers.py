@@ -59,9 +59,25 @@ class ClientSerializer(serializers.ModelSerializer):
     )
     payment_method_display = serializers.CharField(source='get_payment_method_display', read_only=True)
     is_pt_client = serializers.BooleanField(read_only=True)
+    total_paid = serializers.SerializerMethodField()
+    balance_due = serializers.SerializerMethodField()
+
+    def get_total_paid(self, obj):
+        return obj.total_paid
+
+    def get_balance_due(self, obj):
+        return obj.balance_due
 
     # Write-only: amount paid at enrollment — used to create the first Payment record
     amount_paid = serializers.DecimalField(
+        max_digits=10, decimal_places=2,
+        required=False, allow_null=True, write_only=True
+    )
+    # Write-only: manually-set total amount charged for this enrollment.
+    # When provided, this overrides the package price for total_due — lets
+    # staff apply discounts / custom quotes instead of always being locked
+    # to the package's list price. Falls back to package price if omitted.
+    total_amount = serializers.DecimalField(
         max_digits=10, decimal_places=2,
         required=False, allow_null=True, write_only=True
     )
@@ -69,7 +85,7 @@ class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         fields = [
-            'id', 'name', 'phone', 'email', 'address',
+            'id', 'name', 'phone', 'email', 'address', 'date_of_birth',
             'join_date', 'expiry_date', 'status',
             'package', 'package_name',
             'program_package', 'program_package_name', 'program_name', 'program_type',
@@ -77,10 +93,10 @@ class ClientSerializer(serializers.ModelSerializer):
             'personal_training', 'is_pt_client',
             'payment_method', 'payment_method_display',
             'photo',
-            'amount_paid',
+            'amount_paid', 'total_amount', 'total_due', 'total_paid', 'balance_due',
             'payments', 'membership_history', 'created_at',
         ]
-        read_only_fields = ['id', 'status', 'created_at']
+        read_only_fields = ['id', 'status', 'created_at', 'total_due']
         extra_kwargs = {
             'join_date': {'required': False},
             'expiry_date': {'required': False},
@@ -90,6 +106,7 @@ class ClientSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # Pop write-only fields before creating the Client row
         amount_paid = validated_data.pop('amount_paid', None)
+        total_amount = validated_data.pop('total_amount', None)
 
         client = super().create(validated_data)
         client.update_status()
@@ -102,6 +119,16 @@ class ClientSerializer(serializers.ModelSerializer):
         ):
             client.personal_training = True
             client.save(update_fields=['personal_training'])
+
+        # Charge the client for the selected package. total_due accumulates;
+        # balance_due (total_due - total_paid) is what "Pay Balance" clears.
+        # A manually-provided total_amount overrides the package's list
+        # price (e.g. discounts / custom quotes) — pending balance is then
+        # whatever staff set, not forced to the package price.
+        if total_amount is not None:
+            client.charge(total_amount)
+        elif client.program_package:
+            client.charge(client.program_package.price)
 
         # Revenue attribution for base package → recognized in expiry month
         recognized = client.expiry_date
@@ -146,6 +173,7 @@ class ClientSerializer(serializers.ModelSerializer):
         history_note = validated_data.pop('_history_note', '')
         # Pop write-only amount_paid too (if sent by frontend)
         validated_data.pop('amount_paid', None)
+        validated_data.pop('total_amount', None)
 
         client = super().update(instance, validated_data)
         client.update_status()
@@ -167,6 +195,12 @@ class ClientSerializer(serializers.ModelSerializer):
 
         if action or pkg_changed or expiry_changed:
             resolved_action = action or ('upgrade' if pkg_changed else 'renewal')
+
+            # Charge the client again whenever a renewal/upgrade/add-on applies
+            # a (new) package price. Plain edits with no package change don't
+            # add a new charge.
+            if client.program_package and resolved_action in ('renewal', 'upgrade', 'addon'):
+                client.charge(client.program_package.price)
 
             # Revenue attribution:
             # - Renewals / upgrades → recognized in expiry month

@@ -87,16 +87,34 @@ export function AppProvider({ children }) {
       ...c,
       joinDate: c.join_date,
       expiryDate: c.expiry_date,
+      dateOfBirth: c.date_of_birth,
       packageId: c.package,
       programPackageId: c.program_package,
       trainerId: c.trainer,
       personalTraining: c.personal_training,
       paymentMethod: c.payment_method || "cash",
       status: getMembershipStatus(c.expiry_date),
+      totalDue: c.total_due,
+      totalPaid: c.total_paid,
+      balanceDue: c.balance_due,
     };
   }
 
   // ── Clients ───────────────────────────────────────────────────────────────
+
+  // client_count / pt_client_count on Trainer are computed server-side, so
+  // any client add/edit/renew/upgrade/delete that can change a trainer
+  // assignment, PT status, or active/expired status must re-pull trainers —
+  // otherwise the counts shown on the Trainers page go stale until a full
+  // page refresh.
+  const refreshTrainers = useCallback(async () => {
+    try {
+      const t = await trainersAPI.list();
+      setTrainers(t || []);
+    } catch (err) {
+      console.error("Failed to refresh trainers:", err);
+    }
+  }, []);
 
   const addClient = useCallback(async (formData) => {
     try {
@@ -105,6 +123,7 @@ export function AppProvider({ children }) {
         phone: formData.phone,
         email: formData.email,
         address: formData.address,
+        date_of_birth: formData.dateOfBirth || null,
         join_date: formData.joinDate,
         expiry_date: formData.expiryDate,
         package: formData.packageId || null,
@@ -112,12 +131,18 @@ export function AppProvider({ children }) {
         trainer: formData.trainerId || null,
         personal_training: formData.personalTraining,
         payment_method: formData.paymentMethod || "cash",
+        // Manually-set total amount charged for this enrollment (defaults to
+        // the package price in the form, but staff can override it — used
+        // instead of always auto-charging package price, so pending balance
+        // isn't forced).
+        total_amount: formData.totalAmount ? Number(formData.totalAmount) : null,
         // Pass amount paid so the serializer creates a Payment record and
         // sets recognized_month = expiry_date (deferred revenue)
         amount_paid: formData.amountPaid ? Number(formData.amountPaid) : null,
       };
       const newClient = await clientsAPI.create(payload);
       setClients((prev) => [normalizeClient(newClient), ...prev]);
+      refreshTrainers();
       toast.success("Client added!");
       return newClient;
     } catch (err) {
@@ -133,6 +158,7 @@ export function AppProvider({ children }) {
         phone: formData.phone,
         email: formData.email,
         address: formData.address,
+        date_of_birth: formData.dateOfBirth || null,
         join_date: formData.joinDate,
         expiry_date: formData.expiryDate,
         package: formData.packageId || null,
@@ -145,6 +171,7 @@ export function AppProvider({ children }) {
       setClients((prev) =>
         prev.map((c) => (c.id === id ? normalizeClient(updated) : c))
       );
+      refreshTrainers();
       toast.success("Client updated!");
     } catch (err) {
       toast.error(err.message || "Failed to update client");
@@ -156,6 +183,7 @@ export function AppProvider({ children }) {
     try {
       await clientsAPI.delete(id);
       setClients((prev) => prev.filter((c) => c.id !== id));
+      refreshTrainers();
       toast.success("Client removed");
     } catch (err) {
       toast.error(err.message || "Failed to delete client");
@@ -176,6 +204,33 @@ export function AppProvider({ children }) {
   }, []);
 
   /**
+   * payBalance — record a payment against a client's outstanding balance_due.
+   * Uses the same /payments/ endpoint as addPayment; recognized_month
+   * defaults to the current month (the debt may have been incurred earlier,
+   * but the cash is collected now).
+   */
+  const payBalance = useCallback(async (clientId, { amount, method = "cash", note = "" }) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const payload = {
+        amount: Number(amount),
+        date: today,
+        method,
+        note: note || "Balance payment",
+      };
+      const updated = await clientsAPI.addPayment(clientId, payload);
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? normalizeClient(updated) : c))
+      );
+      toast.success("Balance payment recorded!");
+      return updated;
+    } catch (err) {
+      toast.error(err.message || "Failed to record balance payment");
+      throw err;
+    }
+  }, []);
+
+  /**
    * renewClient — extend membership expiry.
    * Revenue is attributed to the new expiry month (last month of the period).
    */
@@ -186,6 +241,7 @@ export function AppProvider({ children }) {
         program_package: formData.programPackageId || null,
         trainer: formData.trainerId || null,
         personal_training: formData.personalTraining ?? false,
+        total_amount: formData.totalAmount ? Number(formData.totalAmount) : null,
         amount_paid: formData.amountPaid ? Number(formData.amountPaid) : null,
         payment_method: formData.paymentMethod || "cash",
         note: formData.note || "",
@@ -195,6 +251,7 @@ export function AppProvider({ children }) {
       setClients((prev) =>
         prev.map((c) => (c.id === clientId ? normalizeClient(updated) : c))
       );
+      refreshTrainers();
       toast.success("Membership renewed!");
       return updated;
     } catch (err) {
@@ -214,6 +271,7 @@ export function AppProvider({ children }) {
         program_package: formData.programPackageId || null,
         trainer: formData.trainerId || null,
         personal_training: formData.personalTraining ?? false,
+        total_amount: formData.totalAmount ? Number(formData.totalAmount) : null,
         amount_paid: formData.amountPaid ? Number(formData.amountPaid) : null,
         payment_method: formData.paymentMethod || "cash",
         note: formData.note || "Package upgrade",
@@ -223,6 +281,7 @@ export function AppProvider({ children }) {
       setClients((prev) =>
         prev.map((c) => (c.id === clientId ? normalizeClient(updated) : c))
       );
+      refreshTrainers();
       toast.success("Package upgraded!");
       return updated;
     } catch (err) {
@@ -242,6 +301,7 @@ export function AppProvider({ children }) {
         program_package: formData.programPackageId || null,
         trainer: formData.trainerId || null,
         personal_training: formData.personalTraining ?? false,
+        total_amount: formData.totalAmount ? Number(formData.totalAmount) : null,
         amount_paid: formData.amountPaid ? Number(formData.amountPaid) : null,
         payment_method: formData.paymentMethod || "cash",
         note: formData.note || "Add-on program",
@@ -251,6 +311,7 @@ export function AppProvider({ children }) {
       setClients((prev) =>
         prev.map((c) => (c.id === clientId ? normalizeClient(updated) : c))
       );
+      refreshTrainers();
       toast.success("Add-on program added!");
       return updated;
     } catch (err) {
@@ -505,6 +566,7 @@ export function AppProvider({ children }) {
         updateClient,
         deleteClient,
         addPayment,
+        payBalance,
         renewClient,
         upgradeClient,
         addAddon,

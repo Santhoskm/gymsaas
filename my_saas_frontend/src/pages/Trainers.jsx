@@ -249,7 +249,7 @@ function TrainerCard({ trainer, onEdit, onDelete }) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 p-3 bg-brand-surface rounded-xl border border-brand-border mb-4">
+      <div className={`grid ${trainer.offers_personal_training ? "grid-cols-3" : "grid-cols-2"} gap-2 p-3 bg-brand-surface rounded-xl border border-brand-border mb-4`}>
         <div className="text-center">
           {/* Fixed: use client_count from backend, not the old 'clients' field */}
           <p className="font-display text-xl font-bold text-brand-text">
@@ -259,6 +259,16 @@ function TrainerCard({ trainer, onEdit, onDelete }) {
             Clients
           </p>
         </div>
+        {trainer.offers_personal_training && (
+          <div className="text-center border-l border-brand-border">
+            <p className="font-display text-xl font-bold text-purple-400">
+              {trainer.pt_client_count ?? 0}
+            </p>
+            <p className="text-[10px] text-brand-subtle uppercase tracking-wider">
+              PT Clients
+            </p>
+          </div>
+        )}
         <div className="text-center border-l border-brand-border">
           <p className="font-display text-xl font-bold text-emerald-400">
             {trainer.salary ? formatCurrency(trainer.salary) : "—"}

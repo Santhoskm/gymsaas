@@ -165,6 +165,11 @@ class ClientRenewView(APIView):
         new_pkg = request.data.get('program_package')
         new_trainer = request.data.get('trainer')
         amount_paid = request.data.get('amount_paid')
+        # Manually-set total amount to charge for this renewal/upgrade/addon.
+        # Overrides the package's list price when provided — lets staff apply
+        # discounts / custom quotes so the pending balance isn't forced to
+        # always equal the package price.
+        total_amount = request.data.get('total_amount')
         payment_method = request.data.get('payment_method', client.payment_method)
         note = request.data.get('note', '')
         requested_action = request.data.get('action', None)
@@ -217,6 +222,7 @@ class ClientRenewView(APIView):
                 pkg_obj = ProgramPackage.objects.select_related('program').get(pk=new_pkg)
                 new_pt = (pkg_obj.program.program_type == 'personal_training')
             except Exception:
+                pkg_obj = None
                 pass
 
         # Assigning/changing the trainer never changes the PT flag on its own.
@@ -227,6 +233,25 @@ class ClientRenewView(APIView):
         client.payment_method = payment_method
         client.save()
         client.update_status()
+
+        # Charge the client for the (new) package price on renewal / upgrade /
+        # addon. balance_due = total_due - total_paid; "Pay Balance" on the
+        # client profile records further Payment rows against this charge.
+        # A manually-provided total_amount overrides the package price so
+        # staff can set the pending balance themselves (discounts, custom
+        # quotes) instead of it always being auto-locked to list price.
+        if total_amount is not None:
+            try:
+                client.charge(total_amount)
+            except Exception:
+                pass
+        elif new_pkg:
+            try:
+                from apps.activities.models import ProgramPackage
+                price = ProgramPackage.objects.get(pk=new_pkg).price
+                client.charge(price)
+            except Exception:
+                pass
 
         # Write membership history
         MembershipHistory.objects.create(

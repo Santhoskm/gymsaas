@@ -10,10 +10,13 @@ const defaultForm = {
   phone: "",
   email: "",
   address: "",
+  dateOfBirth: "",
   joinDate: new Date().toISOString().split("T")[0],
   expiryDate: "",
   trainerId: "",
+  personalTraining: false,
   paymentMethod: "cash",
+  totalAmount: "",
   amountPaid: "",
   note: "",
 };
@@ -65,12 +68,15 @@ export default function ClientForm({
     ...initial,
     joinDate: initial.join_date ?? initial.joinDate ?? defaultForm.joinDate,
     expiryDate: initial.expiry_date ?? initial.expiryDate ?? "",
+    dateOfBirth: initial.date_of_birth ?? initial.dateOfBirth ?? "",
     trainerId: initial.trainer
       ? String(initial.trainer)
       : initial.trainerId
         ? String(initial.trainerId)
         : "",
+    personalTraining: initial.personal_training ?? initial.personalTraining ?? false,
     paymentMethod: initial.payment_method ?? initial.paymentMethod ?? "cash",
+    totalAmount: "",
     amountPaid: "",
     note: "",
   });
@@ -123,9 +129,13 @@ export default function ClientForm({
   }, [selectedPrograms, form.joinDate]);
 
 
-  // When trainer changes, deselect PT programs if trainer can't offer PT
+  // When trainer changes, deselect PT programs (and the manual PT toggle)
+  // if the newly-assigned trainer can't offer PT.
   useEffect(() => {
-    if (!form.trainerId) return;
+    if (!form.trainerId) {
+      set("personalTraining", false);
+      return;
+    }
     const trainer = trainers.find((t) => t.id === Number(form.trainerId));
     if (!trainer?.offers_personal_training) {
       setSelectedPrograms((prev) => {
@@ -137,6 +147,7 @@ export default function ClientForm({
         }
         return next;
       });
+      setForm((prev) => ({ ...prev, personalTraining: false }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.trainerId]);
@@ -193,7 +204,29 @@ export default function ClientForm({
     (p) => p.program_type === "personal_training" && selectedPrograms[p.id]
   );
 
+  // Keep the manual PT toggle in sync when a PT program is checked directly
+  // from the program list — picking a PT package implies PT is enabled.
+  useEffect(() => {
+    if (hasPTSelected && !form.personalTraining) {
+      setForm((prev) => ({ ...prev, personalTraining: true }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPTSelected]);
+
   const selectedPackageInfo = getSelectedPackageInfo();
+
+  // Suggest the package price as a starting point for Total Amount, but only
+  // while the field is still empty — once staff types their own figure it's
+  // never overwritten automatically. This lets the pending amount be set
+  // manually (e.g. discounts, custom quotes) instead of always being forced
+  // to package price.
+  useEffect(() => {
+    if (mode === "edit") return;
+    if (selectedPackageInfo && !form.totalAmount) {
+      setForm((prev) => ({ ...prev, totalAmount: String(selectedPackageInfo.price) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPackageInfo?.id]);
 
   const validate = () => {
     const e = {};
@@ -216,7 +249,7 @@ export default function ClientForm({
       programPackageId: primaryPkgId,
       selectedPrograms,
       trainerId: form.trainerId ? Number(form.trainerId) : null,
-      personalTraining: hasPTSelected,
+      personalTraining: form.personalTraining || hasPTSelected,
     });
   };
 
@@ -284,6 +317,14 @@ export default function ClientForm({
               onChange={(e) => set("address", e.target.value)}
             />
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Date of Birth"
+              type="date"
+              value={form.dateOfBirth}
+              onChange={(e) => set("dateOfBirth", e.target.value)}
+            />
+          </div>
         </>
       )}
 
@@ -327,17 +368,72 @@ export default function ClientForm({
           <option value="">No trainer assigned</option>
           {trainers
             .filter((t) => t.status === "active")
-            .map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}{t.offers_personal_training ? " 🏋️" : ""}
-              </option>
-            ))}
+            .map((t) => {
+              const ptCount = t.pt_client_count;
+              const hasCount = typeof ptCount === "number";
+              return (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.offers_personal_training
+                    ? ` 🏋️${hasCount ? ` (${ptCount} PT client${ptCount === 1 ? "" : "s"})` : ""}`
+                    : ""}
+                </option>
+              );
+            })}
         </Select>
         {form.trainerId && !trainerOffersPT && (
           <p className="text-xs text-brand-subtle mt-1">
             This trainer does not offer personal training — PT programs are hidden.
           </p>
         )}
+      </div>
+
+      {/* Personal Training toggle — only enabled when the assigned trainer
+          is PT-eligible. Turning this on flags the client as a PT client,
+          which is what the Trainers page's PT client count is based on. */}
+      <div>
+        <button
+          type="button"
+          disabled={!trainerOffersPT}
+          onClick={() => set("personalTraining", !form.personalTraining)}
+          title={
+            !form.trainerId
+              ? "Assign a trainer first"
+              : !trainerOffersPT
+                ? "This trainer does not offer personal training"
+                : undefined
+          }
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${!trainerOffersPT
+              ? "bg-brand-card border-brand-border opacity-50 cursor-not-allowed"
+              : form.personalTraining
+                ? "bg-purple-500/10 border-purple-500/30"
+                : "bg-brand-card border-brand-border hover:border-purple-500/30"
+            }`}
+        >
+          <span
+            className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${form.personalTraining && trainerOffersPT
+                ? "bg-purple-500 border-purple-500"
+                : "border-brand-border"
+              }`}
+          >
+            {form.personalTraining && trainerOffersPT && (
+              <span className="w-2 h-2 rounded-full bg-white" />
+            )}
+          </span>
+          <span className="text-lg leading-none">🏋️</span>
+          <span className="flex-1">
+            <span className="text-sm font-medium text-brand-text block">
+              Personal Training
+            </span>
+            <span className="text-xs text-brand-subtle">
+              {!form.trainerId
+                ? "Assign a trainer to enable"
+                : !trainerOffersPT
+                  ? "Selected trainer isn't PT-eligible"
+                  : "Enroll this client for personal training with this trainer"}
+            </span>
+          </span>
+        </button>
       </div>
 
       {/* Program checkbox selection */}
@@ -424,39 +520,66 @@ export default function ClientForm({
         )}
       </div>
 
-      {/* Amount Paid — shown on add / renew / upgrade */}
+      {/* Amount — shown on add / renew / upgrade */}
       {(isRenew || isUpgrade || mode === "add") && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <Input
-              label="Amount Paid (₹)"
+              label="Total Amount (₹)"
               type="number"
               placeholder={
                 selectedPackageInfo ? `e.g. ${selectedPackageInfo.price}` : "e.g. 2499"
               }
-              value={form.amountPaid}
-              onChange={(e) => set("amountPaid", e.target.value)}
+              value={form.totalAmount}
+              onChange={(e) => set("totalAmount", e.target.value)}
             />
-            {/* Hint: show package price to make it easy to fill */}
-            {selectedPackageInfo && !form.amountPaid && (
+            {/* Hint: fill from package price, but staff can override it manually */}
+            {selectedPackageInfo && form.totalAmount !== String(selectedPackageInfo.price) && (
               <button
                 type="button"
                 className="text-xs text-brand-red mt-1 hover:underline"
-                onClick={() => set("amountPaid", String(selectedPackageInfo.price))}
+                onClick={() => set("totalAmount", String(selectedPackageInfo.price))}
               >
                 Use package price ₹{selectedPackageInfo.price}
               </button>
             )}
           </div>
-          <Select
-            label="Payment Method"
-            value={form.paymentMethod}
-            onChange={(e) => set("paymentMethod", e.target.value)}
-          >
-            <option value="cash">Cash</option>
-            <option value="upi">UPI</option>
-          </Select>
+          <Input
+            label="Amount Paid Now (₹)"
+            type="number"
+            placeholder="e.g. 1000"
+            value={form.amountPaid}
+            onChange={(e) => set("amountPaid", e.target.value)}
+          />
         </div>
+      )}
+
+      {/* Manually-set pending — comes from Total Amount you type, not an
+          auto-lock to the package price, so discounts / custom quotes work. */}
+      {(isRenew || isUpgrade || mode === "add") && form.totalAmount && (() => {
+        const total = Number(form.totalAmount) || 0;
+        const paid = Number(form.amountPaid) || 0;
+        const pending = Math.max(total - paid, 0);
+        return pending > 0 ? (
+          <p className="text-xs text-amber-400 -mt-2 font-medium">
+            ⚠️ Pending balance to be recorded: ₹{pending}
+          </p>
+        ) : (
+          <p className="text-xs text-emerald-400 -mt-2 font-medium">
+            ✓ Fully paid — no pending balance
+          </p>
+        );
+      })()}
+
+      {(isRenew || isUpgrade || mode === "add") && (
+        <Select
+          label="Payment Method"
+          value={form.paymentMethod}
+          onChange={(e) => set("paymentMethod", e.target.value)}
+        >
+          <option value="cash">Cash</option>
+          <option value="upi">UPI</option>
+        </Select>
       )}
 
       {(isRenew || isUpgrade) && (
